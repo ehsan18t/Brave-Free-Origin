@@ -406,6 +406,18 @@ Advanced scriptlet backups are stored beside the Brave component list they prote
 
 Disabled scriptlet preference exports are JSON files saved wherever you choose in the save dialog.
 
+## Platform Compatibility
+
+Brave Free Origin is Windows-only — it's a WinForms GUI that writes to HKEY_LOCAL_MACHINE\Software\Policies\BraveSoftware\Brave.
+
+For macOS, there's an unofficial companion project:
+
+[Johnny-Kao/brave-free-origin-macos](https://github.com/Johnny-Kao/brave-free-origin-macos) — applies the same category of Brave enterprise policies via macOS Managed Preferences (/Library/Managed Preferences/com.brave.Browser.plist) instead of the Windows Registry.
+
+
+It's independently written and maintained, not a fork of this project, and not officially supported here — check its own README for usage and caveats.
+
+
 ## Sources
 
 - [Brave Help Center - Group Policy](https://support.brave.com/hc/en-us/articles/360039248271-Group-Policy)

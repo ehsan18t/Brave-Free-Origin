@@ -184,6 +184,10 @@ The app writes Brave enterprise policies to:
 
 That means it is not just hiding buttons visually. It is using the same managed-policy system organizations use to disable features in Chromium-based browsers.
 
+### About the "Managed by your organization" note
+
+Because this tool writes real enterprise policies under `HKLM\Software\Policies\BraveSoftware\Brave`, Brave will show a **"Managed by your organization"** entry in its menu and on `brave://management` for as long as any policy is applied. This is a Chromium transparency feature: any browser with active machine-level policies shows it. There is **no supported way to keep the policies but hide the note** — Brave declined to add one, so attempting to force it off would mean unsupported hacks that can break the policy system. The only clean way to remove the note is to remove the policies (untick everything and Apply, or use the built-in reset/restore). This is by design, not a bug.
+
 It can disable or reduce:
 
 - Leo / AI and Chromium GenAI features
@@ -201,7 +205,7 @@ It can disable or reduce:
 It can also tune Brave for a lighter footprint:
 
 - QUIC / HTTP3 on
-- hardware acceleration on
+- hardware acceleration: pick Enable (1) or Disable (0) from the dropdown next to the checkbox (Disable is handy for buggy GPU drivers / artifacts)
 - memory saver on
 - lighter startup behavior
 - blank homepage / blank new tab in the performance modes

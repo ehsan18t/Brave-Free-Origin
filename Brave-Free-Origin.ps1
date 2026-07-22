@@ -98,6 +98,7 @@ function Get-DetectedChannels {
 #              MaxPrivacy (tick for "Maximum Privacy"), Description
 $script:Policies = [ordered]@{
     'Brave Features' = @(
+        @{Name='HardwareAccelerationModeEnabled'; Type='DWORD'; ApplyValue=1; Recommended=$true;  MaxPrivacy=$true;  Choices=([ordered]@{'Enable (1)'=1; 'Disable (0)'=0}); Description='GPU hardware acceleration. Enabled by default in every mode. Pick Disable (0) to fix GPU driver glitches, artifacts or crashes. Untick the box to leave Brave in control.'},
         @{Name='BraveRewardsDisabled';         Type='DWORD';  ApplyValue=1; Recommended=$true;  MaxPrivacy=$true;  Description='Disable Brave Rewards (BAT ads/tips) and hide all Rewards UI.'},
         @{Name='BraveWalletDisabled';          Type='DWORD';  ApplyValue=1; Recommended=$true;  MaxPrivacy=$true;  Description='Disable the built-in crypto wallet (ETH/BTC/SOL/FIL/ZEC).'},
         @{Name='BraveVPNDisabled';             Type='DWORD';  ApplyValue=1; Recommended=$true;  MaxPrivacy=$true;  Description='Disable Brave VPN integration and all VPN UI.'},
@@ -186,7 +187,6 @@ $script:Policies = [ordered]@{
         @{Name='QuicAllowed';                     Type='DWORD';  ApplyValue=1;          Recommended=$true;  MaxPrivacy=$true;  Description='Enable QUIC / HTTP/3 protocol. Faster TLS handshake, lower latency.'},
         @{Name='HighEfficiencyModeEnabled';       Type='DWORD';  ApplyValue=1;          Recommended=$true;  MaxPrivacy=$true;  Description='Memory Saver: sleep inactive tabs to reclaim RAM/CPU.'},
         @{Name='BatterySaverModeAvailability';    Type='DWORD';  ApplyValue=2;          Recommended=$true;  MaxPrivacy=$true;  Description='Allow Battery Saver on low battery (2). 1=always on unplugged, 0=disabled.'},
-        @{Name='HardwareAccelerationModeEnabled'; Type='DWORD';  ApplyValue=1;          Recommended=$true;  MaxPrivacy=$true;  Description='Force GPU hardware acceleration. Big gain for video/scrolling.'},
         @{Name='MediaRouterEnabled';              Type='DWORD';  ApplyValue=0;          Recommended=$true;  MaxPrivacy=$true;  Description='Disable Google Cast / Media Router. Stops background mDNS discovery and memory overhead.'},
         @{Name='DiskCacheSize';                   Type='DWORD';  ApplyValue=262144000;  Recommended=$true;  MaxPrivacy=$false; Description='Cap disk cache at 250 MB (value in bytes). Prevents unbounded cache growth on SSDs.'},
         @{Name='BrowserLabsEnabled';              Type='DWORD';  ApplyValue=0;          Recommended=$true;  MaxPrivacy=$true;  Description='Hide the Labs / experimental features icon in the toolbar.'},
@@ -1645,10 +1645,12 @@ $braveVer = Get-BraveVersion
 $script:SuppressSelectionEvents = $false
 $script:ActiveProfile = 'Custom'
 $script:MinimalPolicies = @(
+    'HardwareAccelerationModeEnabled',
     'BraveRewardsDisabled','BraveWalletDisabled','BraveVPNDisabled',
     'BraveAIChatEnabled','PasswordManagerEnabled'
 )
 $script:OriginPolicies = @(
+    'HardwareAccelerationModeEnabled',
     'BraveAIChatEnabled',
     'BraveNewsDisabled',
     'BraveP3AEnabled',
@@ -2045,6 +2047,10 @@ $form.Controls.Add($tabs)
 
 # Track every checkbox so we can iterate on apply/reset
 $script:CheckBoxes = @()
+# Maps a policy Name -> its value-picker ComboBox (only for policies that
+# define a Choices map, e.g. HardwareAccelerationModeEnabled). Used by
+# refresh/import so the picker reflects the real registry value.
+$script:PolicyCombos = @{}
 
 foreach ($cat in $script:Policies.Keys) {
     $tab = New-Object System.Windows.Forms.TabPage
@@ -2089,15 +2095,45 @@ foreach ($cat in $script:Policies.Keys) {
     $y = 35
     foreach ($p in $script:Policies[$cat]) {
         $cb = New-Object System.Windows.Forms.CheckBox
-        $cb.Text = "$($p.Name)    =>  $($p.ApplyValue)"
+        # Policies with a Choices map show a dropdown for the value instead of a
+        # fixed "=> N", so keep their label short; others keep the classic text.
+        if ($p.Choices) { $cb.Text = $p.Name } else { $cb.Text = "$($p.Name)    =>  $($p.ApplyValue)" }
         $cb.Location = New-Object System.Drawing.Point(15, $y)
-        $cb.Size = New-Object System.Drawing.Size(450, 20)
+        $cb.Size = New-Object System.Drawing.Size(($(if ($p.Choices) { 300 } else { 450 })), 20)
         $cb.Font = New-Object System.Drawing.Font('Consolas', 9)
         $cb.Tag = @{Policy = $p; Category = $cat}
         $cb.Add_CheckedChanged({ Set-CustomMode })
         $tt.SetToolTip($cb, $p.Description)
         $tab.Controls.Add($cb)
         $script:CheckBoxes += $cb
+
+        # Value picker for choice-based policies. Selecting an item rewrites the
+        # policy's ApplyValue in place, so every downstream path (apply, verify,
+        # export) automatically uses the chosen value with no extra plumbing.
+        if ($p.Choices) {
+            $combo = New-Object System.Windows.Forms.ComboBox
+            $combo.DropDownStyle = 'DropDownList'
+            $combo.Location = New-Object System.Drawing.Point(320, ($y - 1))
+            $combo.Size = New-Object System.Drawing.Size(140, 22)
+            $combo.Font = New-Object System.Drawing.Font('Consolas', 9)
+            foreach ($label in $p.Choices.Keys) { [void]$combo.Items.Add($label) }
+            # Preselect the label whose value matches the current ApplyValue.
+            foreach ($label in $p.Choices.Keys) {
+                if ("$($p.Choices[$label])" -eq "$($p.ApplyValue)") { $combo.SelectedItem = $label; break }
+            }
+            if ($combo.SelectedIndex -lt 0) { $combo.SelectedIndex = 0 }
+            $combo.Tag = $p
+            $combo.Add_SelectedIndexChanged({
+                $pol = $this.Tag
+                if ($this.SelectedItem -and $pol.Choices.Contains("$($this.SelectedItem)")) {
+                    $pol.ApplyValue = $pol.Choices["$($this.SelectedItem)"]
+                }
+                Set-CustomMode
+            })
+            $tt.SetToolTip($combo, $p.Description)
+            $tab.Controls.Add($combo)
+            $script:PolicyCombos[$p.Name] = $combo
+        }
 
         $desc = New-Object System.Windows.Forms.Label
         $desc.Text = $p.Description
@@ -3100,6 +3136,7 @@ $btnExport.Add_Click({
         channel  = $script:TargetChannels
         profile  = $script:ActiveProfile
         policies = [ordered]@{}
+        policyValues = [ordered]@{}
         tasks    = [ordered]@{}
         services = [ordered]@{}
         hosts    = [ordered]@{}
@@ -3119,7 +3156,11 @@ $btnExport.Add_Click({
             urls       = "$($script:TxtStartupUrl.Text)"
         }
     }
-    foreach ($cb in $script:CheckBoxes)        { $cfg.policies[$cb.Tag.Policy.Name] = [bool]$cb.Checked }
+    foreach ($cb in $script:CheckBoxes)        {
+        $cfg.policies[$cb.Tag.Policy.Name] = [bool]$cb.Checked
+        # Remember the picked value for choice policies (e.g. hardware accel).
+        if ($cb.Tag.Policy.Choices) { $cfg.policyValues[$cb.Tag.Policy.Name] = $cb.Tag.Policy.ApplyValue }
+    }
     foreach ($cb in $script:TaskCheckBoxes)    { $cfg.tasks[$cb.Tag.Name]            = [bool]$cb.Checked }
     foreach ($cb in $script:ServiceCheckBoxes) { $cfg.services[$cb.Tag.Name]         = [bool]$cb.Checked }
     foreach ($cb in $script:HostsCheckBoxes)   { $cfg.hosts[$cb.Tag.Name]            = [bool]$cb.Checked }
@@ -3150,6 +3191,22 @@ $btnImport.Add_Click({
         foreach ($cb in $script:CheckBoxes) {
             $name = $cb.Tag.Policy.Name
             if ($cfg.policies.PSObject.Properties.Name -contains $name) { $cb.Checked = [bool]$cfg.policies.$name }
+        }
+    }
+    if ($cfg.policyValues) {
+        # Restore the picked value for choice policies (e.g. hardware accel).
+        foreach ($cb in $script:CheckBoxes) {
+            $p = $cb.Tag.Policy
+            if (-not $p.Choices) { continue }
+            if ($cfg.policyValues.PSObject.Properties.Name -notcontains $p.Name) { continue }
+            $wanted = "$($cfg.policyValues.$($p.Name))"
+            $combo  = $script:PolicyCombos[$p.Name]
+            foreach ($label in $p.Choices.Keys) {
+                if ("$($p.Choices[$label])" -eq $wanted) {
+                    if ($combo) { $combo.SelectedItem = $label } else { $p.ApplyValue = $p.Choices[$label] }
+                    break
+                }
+            }
         }
     }
     if ($cfg.tasks) {
@@ -3303,7 +3360,24 @@ $btnLoad.Add_Click({
     foreach ($cb in $script:CheckBoxes) {
         $p = $cb.Tag.Policy
         $cur = Get-ExistingPolicy $p.Name
-        $cb.Checked = ($null -ne $cur -and "$cur" -eq "$($p.ApplyValue)")
+        if ($p.Choices) {
+            # A choice policy counts as "on" whenever a value is present; point
+            # the picker at whatever the registry actually holds.
+            if ($null -ne $cur) {
+                $combo = $script:PolicyCombos[$p.Name]
+                foreach ($label in $p.Choices.Keys) {
+                    if ("$($p.Choices[$label])" -eq "$cur") {
+                        if ($combo) { $combo.SelectedItem = $label } else { $p.ApplyValue = $p.Choices[$label] }
+                        break
+                    }
+                }
+                $cb.Checked = $true
+            } else {
+                $cb.Checked = $false
+            }
+        } else {
+            $cb.Checked = ($null -ne $cur -and "$cur" -eq "$($p.ApplyValue)")
+        }
     }
     $script:BravePolicyPath = $originalPath
     foreach ($cb in $script:TaskCheckBoxes) {

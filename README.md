@@ -1,6 +1,6 @@
 # Brave Free Origin (v1.12)
 
-[简体中文](README.zh-CN.md)
+
 
 `Brave Free Origin` is a Windows GUI tool that turns normal Brave into a leaner, stripped-down build without paying for Brave Origin.
 
@@ -645,7 +645,7 @@ For macOS, there's an unofficial companion project:
 
 
 It's independently written and maintained, not a fork of this project, and not officially supported here — check its own README for usage and caveats.
-
+[简体中文](README.zh-CN.md)
 
 ## Sources
 

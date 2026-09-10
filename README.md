@@ -1,4 +1,6 @@
-# Brave Free Origin (v1.11)
+# Brave Free Origin (v1.12)
+
+[简体中文](README.zh-CN.md)
 
 `Brave Free Origin` is a Windows GUI tool that turns normal Brave into a leaner, stripped-down build without paying for Brave Origin.
 
@@ -7,6 +9,11 @@ The point is simple: Brave took the "remove the AI, crypto, VPN, promo junk" ide
 It is inspired by [MulesGaming/brave-debullshitinator](https://github.com/MulesGaming/brave-debullshitinator), but reshaped into a cleaner WinForms app with one-click modes, screenshots, backups, and a more normal Windows-user flow.
 
 ![Brave Free Origin GUI](images/screenshot.png)
+
+**New in v1.12:** the interface is translatable (Simplified Chinese included),
+and there is a search box that filters every setting at once. See
+[TRANSLATING.md](TRANSLATING.md) if you want to add your language — it is one
+JSON file, no PowerShell required.
 
 ---
 
@@ -44,7 +51,50 @@ There is also a `Default Scriptlets (Advanced)` tab. That is a separate optional
 
 **8. Click `Apply to Brave`** (the big green button). Then **fully close and reopen Brave** — running tabs need a restart to pick up the new policies.
 
+**8b. (Optional) Use the filter bar** above the tabs to find a setting fast.
+Type any part of a policy name, its description or its category — `password`,
+`telemetry`, `BraveVPNDisabled` — and every tab collapses to just the matches,
+with a live count on each tab caption. Tick **Selected only** after picking a
+mode to review exactly what that preset is about to enforce, and nothing else.
+
+The filter is **presentational only**: it hides and re-flows rows, and never
+ticks, unticks or otherwise changes a single setting. `Clear` restores every
+row. It covers the nine policy tabs, `System (Tasks / Services)` and
+`Hosts Blocklist`; `Search & Startup` and `Default Scriptlets` are not indexed
+by it (Scriptlets has its own scanner and search box, tuned for thousands of
+rows), so those two tab captions never show a match count.
+
 **9. (Recommended)** Click the `Verify` button in the app. It reads the registry back and confirms your selections actually landed. You can copy or save the report. Or open `brave://policy` and check that each policy shows `Source: Platform`, `Scope: Machine`, `Status: OK`.
+
+### Changing the language
+
+Use the **Language** dropdown in the top-right of the header. The change is
+live — no restart — and is remembered in
+`%LOCALAPPDATA%\Brave-Free-Origin\settings.json`.
+
+You can also force it from the command line, which is handy for testing:
+
+```powershell
+.\Brave-Free-Origin.ps1 -Lang zh-CN
+```
+
+If you never touch the dropdown, the app follows your Windows display language.
+Resolution order is: `-Lang`, then the saved preference, then the Windows UI
+culture, then a same-language file, then English.
+
+The same-language step will not cross writing systems. A `zh-CN`, `zh-SG` or
+`zh-Hans-*` Windows gets Simplified Chinese; a `zh-TW`, `zh-HK`, `zh-MO` or
+`zh-Hant-*` Windows stays in **English** unless a Traditional Chinese locale
+file is actually installed, because Simplified text is not a usable
+substitute. You can always pick any installed language from the dropdown.
+
+Diagnostic output stays in English on purpose: the log pane, the **Preview
+changes** report and the **Verify** report. That way a translated install still
+produces bug reports the maintainer can read. A handful of on-screen strings
+are also deliberately untranslated — policy names, scheduled task and service
+names, registry paths, domains, URLs, raw filter rules and scriptlet
+identifiers — because they are things you cross-check against
+`brave://policy`, `services.msc` or Brave's own filter lists.
 
 ### Files in this folder
 
@@ -53,12 +103,20 @@ Brave-Free-Origin/
 ├── Brave-Free-Origin.bat   ← double-click THIS one
 ├── Brave-Free-Origin.ps1   ← never double-click this (opens in Notepad)
 ├── README.md               ← you are here
+├── README.zh-CN.md
+├── TRANSLATING.md          ← how to add a language
 ├── LICENSE
+├── locales/
+│   ├── en-US.json          ← generated reference, never loaded at runtime
+│   └── zh-CN.json          ← Simplified Chinese
 └── images/
     ├── screenshot.png      ← GUI preview shown above
     ├── Brave-before.png    ← memory comparison: before
     └── Brave-after.png     ← memory comparison: after
 ```
+
+Deleting `locales/` is harmless — the English catalog is embedded in the
+script, so the app simply runs in English.
 
 The launcher (`.bat`) is essentially one line: it runs the PowerShell script with `-ExecutionPolicy Bypass`. That bypass is scoped only to that single launch — it does **not** weaken your machine's PowerShell policy.
 
@@ -66,6 +124,103 @@ The launcher (`.bat`) is essentially one line: it runs the PowerShell script wit
 
 <details>
 <summary><strong>📜 Changelog (click to expand)</strong></summary>
+
+### What's new in v1.12
+
+Two user-facing features, and a large internal refactor that had to land first.
+
+- **Translatable interface.** A `Language` dropdown in the header switches the
+  whole UI live. Simplified Chinese (`zh-CN`) ships in the box — support added
+  in response to [#4](https://github.com/TahaHydra/Brave-Free-Origin/issues/4),
+  opened by [@A81N9](https://github.com/A81N9). The Chinese wording has **not**
+  been reviewed by a native speaker yet, so `locales/zh-CN.json` carries
+  `"reviewed": false` and the app shows a small *community translation,
+  unreviewed* note under the picker. Review PRs are very welcome.
+  Adding a language is one JSON file — see [TRANSLATING.md](TRANSLATING.md).
+- **Global configuration filter.** A search box above the tabs filters
+  policies, scheduled tasks, Windows services and hosts groups at the same
+  time, matching on name, description and category — in whichever language the
+  UI is currently in, and on the untranslated policy identifier either way.
+  Hidden rows collapse instead of leaving gaps, each tab caption shows its
+  match count, and the view jumps to the first tab with a hit. Filtering is
+  purely presentational: it never changes a selection. A **Selected only**
+  checkbox shows just what is currently ticked — pair it with a preset to
+  review exactly what is about to be enforced. `Search & Startup` and the
+  Scriptlets tab are not part of this index; Scriptlets keeps its own
+  dedicated scanner, which handles thousands of rows and is already tuned.
+- **Stable internal ids, separated from labels.** Presets, hosts groups,
+  search engines, new-tab destinations, startup modes, policy categories and
+  the channel selector previously used their English display text as the
+  lookup key. Translating the UI would have silently broken preset behaviour
+  and config import. Everything now keys off a language-independent id and the
+  visible label is looked up separately.
+- **Config schema v2.** Exports now carry `schemaVersion` (the file format)
+  and `appVersion` (the app) as separate fields, so gaining a button no longer
+  looks like a format change. Hosts groups, search engines, new-tab
+  destinations and startup modes are stored by id. **Configs exported by
+  v1.5-v1.11 still import correctly** — the old English names are mapped on
+  the way in. A config exported in Chinese imports identically in English and
+  vice versa.
+- **`-Lang` and settings survive elevation.** The relaunch after the UAC
+  prompt used to rebuild a fixed command line and drop every parameter. It now
+  forwards `-Lang` and the resolved settings path, so an elevated
+  administrator account still reads the original user's preference file.
+- **Switching language changes nothing but text.** Relabelling a dropdown
+  means clearing and refilling its items, and WinForms reports that as a user
+  selection change — which would have quietly demoted `Recommended` to
+  `Custom` and could have moved the hardware-acceleration value. Every bulk
+  update (language switch, preset, config import, *Load current state*, full
+  restore) now runs with the change handlers muted, restores the exact
+  selected id, and re-asserts the active mode afterwards.
+- **CJK layout handling.** Microsoft YaHei UI is used for `zh-*` when
+  installed, with taller rows and a larger description font, and every
+  localized control re-resolves its font on a switch instead of staying pinned
+  to Segoe UI, which has no CJK coverage. Row geometry is recalculated from
+  the *active* locale in both directions, so going back to English shrinks the
+  rows again rather than leaving tall labels inside short rows. The preset
+  button row measures its captions and re-flows instead of using fixed X
+  positions, so a longer translated label cannot overlap its neighbour.
+- **Traditional Chinese is never served Simplified.** Locale matching is
+  script-aware: `zh-CN` / `zh-SG` / `zh-Hans-*` resolve to `zh-CN`, while
+  `zh-TW` / `zh-HK` / `zh-MO` / `zh-Hant-*` fall back to English until a
+  Traditional Chinese file exists.
+- **The script stays pure ASCII.** Windows PowerShell 5.1 decodes a BOM-less
+  `.ps1` with the system ANSI code page, so literal Chinese in the app would
+  mojibake on machines with a different code page. Translations live in
+  `locales\*.json` and are read with an explicit UTF-8 decoder.
+- **Community locale files are treated as hostile data.** A file dropped into
+  `locales\` by hand is parsed as inert JSON — never executed, never through
+  `Invoke-Expression` or `Import-LocalizedData`. It may only replace keys
+  English already defines, so it cannot introduce a registry path, policy
+  name, domain, URL or numeric value. Unknown keys, non-strings, over-long
+  values, control characters and mismatched `{0}` placeholders are rejected
+  key by key and fall back to English; a malformed or invalid file leaves the
+  app in English instead of crashing it.
+- **Locale tooling and CI.** `tools\Test-Locales.ps1` validates encoding,
+  JSON, duplicate keys, unknown keys, placeholder parity, escaped braces,
+  control characters, value length and metadata.
+  `tools\Export-EnglishLocale.ps1` regenerates `locales\en-US.json` from the
+  embedded catalog by parsing the app's syntax tree — it never executes the
+  app — and writes byte-identical output under Windows PowerShell 5.1 and
+  PowerShell 7. CI runs both tools under **Windows PowerShell 5.1**, which is
+  what the launcher actually uses, as well as under PowerShell 7, and enforces
+  the ASCII rule, the locale encoding rules and the portable-zip contents.
+
+Behaviour is otherwise unchanged: the same policies, the same registry writes,
+the same hosts handling. Every preset's policy / task / service / hosts payload
+was diffed against v1.11 as part of this release and is identical once the
+hosts groups are mapped from their old English names to the new ids, as are the
+search-provider names, URLs, suggest URLs, keywords, homepages, new-tab
+destination values and `RestoreOnStartup` codes that reach the registry. The
+Scriptlets tab remains manual-only: it is never touched by a preset, by
+`Apply to Brave`, or by anything that runs at startup. If you find any
+difference in what gets applied between v1.11 and v1.12, that is a bug —
+please open an issue.
+
+One genuine fix landed alongside: the 32-bit `Program Files (x86)` probe for
+`brave.exe` was written `"$env:ProgramFiles(x86)\..."`, which PowerShell
+expands as `$env:ProgramFiles` followed by a literal `(x86)`, so it could
+never match. It is now `"${env:ProgramFiles(x86)}\..."`.
 
 ### What's new in v1.11
 
@@ -153,15 +308,31 @@ Four additions, all opt-in and reversible. Nothing changes in existing modes —
 
 #### Will antivirus flag any of this?
 
-Short answer: no, by design.
+It might. No tool can promise otherwise — a PowerShell script that writes to
+`HKLM` and edits the `hosts` file is exactly the shape heuristic detection
+looks for, and heuristic detections are not statements about what the code
+actually does. What this project can promise is that it is built to minimise
+false positives, and that you can verify every claim below by reading the
+source:
 
 - No executable modification, no code-signing changes, no hex-edited binaries.
+- No obfuscation, no encoded payloads, no `Invoke-Expression` on downloaded content.
+- No downloader: nothing is fetched from the network at runtime.
 - No new scheduled tasks, no auto-startup entries, no persistence mechanism.
-- Registry writes target the standard enterprise-policy hive — exactly what corporate IT does to manage browsers.
-- Hosts file edits use a clearly-labeled sentinel block that an admin can read or remove with Notepad. We use ASCII encoding (the format Windows expects); some AVs flag UTF-16 hosts files, ours does not.
+- No attempt to disable, exclude itself from, or evade any security product.
+- Registry writes target the documented enterprise-policy paths under
+  `HKLM\Software\Policies\BraveSoftware\Brave` — exactly what corporate IT does to manage browsers.
+- Hosts file edits are explicit, listed in the UI before they happen, wrapped in
+  a clearly-labeled sentinel block an admin can read or remove with Notepad, and
+  reversible from the same tab. They are written as ASCII, the format Windows
+  expects, rather than UTF-16.
 - Every destructive operation backs up first, into `Documents\Brave-Free-Origin-Backups\`.
+- The whole thing is a single open-source `.ps1` you can read end to end.
 
-If your AV does flag the script, it's flagging the act of registry writes from PowerShell, not anything specific we do. Reading the script confirms it.
+If your AV does flag it, that flag is about "a PowerShell script is writing
+policy registry values", which is the tool working as documented. Read the
+script, or run `Preview changes` first — it prints every write it intends to
+make without performing any of them.
 
 #### Conflict notes
 
@@ -262,6 +433,10 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ".\Brave-Free-Or
 ```
 
 That bypass applies only to that launch of the script. It does not permanently weaken your machine's policy.
+
+The script accepts two optional parameters, both forwarded across the UAC
+prompt: `-Lang <locale>` to force a UI language, and `-BfoSettingsPath <path>`
+to point it at a different settings file.
 
 ### SmartScreen / "Windows protected your PC"
 
@@ -384,9 +559,17 @@ Scriptlet restores use the local `list.txt.bfo-backup` files created beside Brav
 ```text
 Brave-Free-Origin/
 ├── Brave-Free-Origin.bat     # UAC-elevating launcher  ← double-click THIS
-├── Brave-Free-Origin.ps1     # Main GUI, single-file WinForms app
+├── Brave-Free-Origin.ps1     # Main GUI, single-file WinForms app (ASCII only)
 ├── README.md                 # this file
+├── README.zh-CN.md           # Simplified Chinese readme
+├── TRANSLATING.md            # how to add a language
 ├── LICENSE
+├── locales/                  # UI translations, read as UTF-8 at runtime
+│   ├── en-US.json            #   generated reference, never loaded
+│   └── zh-CN.json            #   Simplified Chinese
+├── tools/                    # maintainer scripts, not shipped to users
+│   ├── Export-EnglishLocale.ps1
+│   └── Test-Locales.ps1
 └── images/
     ├── screenshot.png        # GUI preview
     ├── Brave-before.png      # Memory comparison: before
@@ -402,6 +585,14 @@ Backups land here:
 └── brave-free-origin-config-YYYYMMDD-HHMMSS.json   # exported configs
 ```
 
+UI preferences (currently just the chosen language) live separately, per user:
+
+```text
+%LOCALAPPDATA%\Brave-Free-Origin\settings.json
+```
+
+Deleting it just resets the app to following your Windows display language.
+
 Advanced scriptlet backups are stored beside the Brave component list they protect:
 
 ```text
@@ -409,6 +600,40 @@ Advanced scriptlet backups are stored beside the Brave component list they prote
 ```
 
 Disabled scriptlet preference exports are JSON files saved wherever you choose in the save dialog.
+
+`tools/` is maintainer tooling and is deliberately left out of the portable
+zip. The zip itself (`Brave-Free-Origin.zip`) is a build output produced by CI
+and attached to releases — it is not a tracked file in this repository.
+
+### Exported config format
+
+`Export config` writes schema **2**:
+
+```jsonc
+{
+  "schemaVersion": 2,          // the file format
+  "appVersion": "1.12",        // the app that wrote it - moves independently
+  "exported": "2026-09-10T14:03:11",
+  "channel": ["Stable"],
+  "profile": "Recommended",    // stable preset id, never the translated label
+  "policies":     { "BraveVPNDisabled": true },
+  "policyValues": { "HardwareAccelerationModeEnabled": 1 },
+  "tasks":        { "BraveSoftwareUpdateTaskMachineCore": true },
+  "services":     { "brave": false },
+  "hosts":        { "p3a": true },                    // stable group id
+  "search":  { "enabled": false, "engineId": "brave",      "customUrl": "" },
+  "ntp":     { "enabled": false, "destinationId": "blank", "customUrl": "" },
+  "startup": { "enabled": false, "modeId": "newTab",       "urls": "" }
+}
+```
+
+`schemaVersion` only changes when the *format* changes, so a normal app release
+does not invalidate your saved configs. Files written by v1.5-v1.11 used
+English display text where schema 2 uses ids (`"Brave P3A telemetry"` instead
+of `"p3a"`, `"Open the new tab page"` instead of `"newTab"`, and so on); those
+names are mapped on import, so old configs keep working. Because nothing in
+the file depends on display text, a config exported with the UI in Chinese
+imports identically with the UI in English and the other way round.
 
 ## Platform Compatibility
 

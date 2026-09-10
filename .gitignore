@@ -1,0 +1,33 @@
+# Build output. The portable zip is produced by CI (see
+# .github/workflows/ci.yml) and attached to releases - it is never a tracked
+# source file.
+*.zip
+
+# Runtime / user artifacts the app writes. None of these belong to the repo.
+/settings.json
+*.bfo-backup
+brave-policies-backup-*.reg
+hosts-backup-*.bak
+brave-free-origin-*.txt
+brave-free-origin-*.csv
+brave-free-origin-*.json
+Brave-Free-Origin-Backups/
+
+# Editor and OS noise.
+.vs/
+.vscode/
+.idea/
+*.swp
+*~
+Thumbs.db
+desktop.ini
+
+# Scratch space.
+/tmp/
+/temp/
+/scratch/
+*.log
+*.tmp
+
+# Assistant / agent tooling state - never part of a release.
+.claude/

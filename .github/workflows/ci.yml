@@ -15,7 +15,62 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Parse PowerShell script
+      # --- Windows PowerShell 5.1 -------------------------------------------
+      # This is the production runtime: Brave-Free-Origin.bat launches
+      # powershell.exe, not pwsh. Anything that only works under PowerShell 7
+      # is broken for every user, so 5.1 is validated first and in full.
+      - name: Parse application script (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          $errors = $null
+          $tokens = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'Brave-Free-Origin.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors) {
+            $errors | Format-List *
+            exit 1
+          }
+          "Windows PowerShell $($PSVersionTable.PSVersion) parse OK"
+
+      - name: Parse tooling scripts (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          $failed = $false
+          foreach ($file in (Get-ChildItem 'tools' -Filter '*.ps1' -File)) {
+            $errors = $null
+            $tokens = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors) { $errors | Format-List *; $failed = $true }
+          }
+          if ($failed) { exit 1 }
+          'Tooling parse OK'
+
+      # Invoked exactly the way the docs tell a maintainer to invoke it: no
+      # arguments. $PSScriptRoot is empty while param() defaults are evaluated
+      # under 5.1, so a tool that only works with explicit paths would pass a
+      # pwsh-only CI and fail on a real machine.
+      - name: Validate locales (Windows PowerShell 5.1, no arguments)
+        shell: powershell
+        run: |
+          .\tools\Test-Locales.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Check generated en-US.json (Windows PowerShell 5.1, no arguments)
+        shell: powershell
+        run: |
+          .\tools\Export-EnglishLocale.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $diff = git diff --name-only -- 'locales/en-US.json'
+          if ($diff) {
+            git --no-pager diff -- 'locales/en-US.json'
+            throw 'locales/en-US.json is out of date. Run tools\Export-EnglishLocale.ps1 and commit the result.'
+          }
+          'en-US.json is current under Windows PowerShell 5.1'
+
+      # --- PowerShell 7 -----------------------------------------------------
+      # Not the shipping runtime, but a cheap second opinion: it catches
+      # constructs that changed meaning between hosts, and the exporter's
+      # output must be byte-identical under both (hence the ordinal key sort).
+      - name: Parse application script (PowerShell 7)
         shell: pwsh
         run: |
           $errors = $null
@@ -25,7 +80,66 @@ jobs:
             $errors | Format-List *
             exit 1
           }
-          'PowerShell parse OK'
+          "PowerShell $($PSVersionTable.PSVersion) parse OK"
+
+      - name: Validate locales (PowerShell 7)
+        shell: pwsh
+        run: |
+          ./tools/Test-Locales.ps1 -MinCoverage 50
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Check generated en-US.json is host-independent (PowerShell 7)
+        shell: pwsh
+        run: |
+          ./tools/Export-EnglishLocale.ps1
+          $diff = git diff --name-only -- 'locales/en-US.json'
+          if ($diff) {
+            git --no-pager diff -- 'locales/en-US.json'
+            throw 'tools/Export-EnglishLocale.ps1 produced different output under PowerShell 7 than under Windows PowerShell 5.1. The generator must be deterministic across hosts.'
+          }
+          'en-US.json is identical under PowerShell 7'
+
+      # --- Encoding and packaging guards ------------------------------------
+      # Windows PowerShell 5.1 decodes a BOM-less .ps1 with the system ANSI
+      # code page. Any non-ASCII byte in the app would mojibake on machines
+      # whose code page differs from the author's, so translated text must
+      # live in locales\*.json and this file must stay pure ASCII.
+      - name: Enforce ASCII-only application script
+        shell: pwsh
+        run: |
+          $bytes = [System.IO.File]::ReadAllBytes((Resolve-Path 'Brave-Free-Origin.ps1'))
+          if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+            throw 'Brave-Free-Origin.ps1 has a UTF-8 BOM. It must be saved without one.'
+          }
+          $bad = @()
+          $line = 1
+          for ($i = 0; $i -lt $bytes.Length; $i++) {
+            if ($bytes[$i] -eq 0x0A) { $line++ }
+            elseif ($bytes[$i] -gt 127) { $bad += $line }
+          }
+          if ($bad.Count -gt 0) {
+            throw "Non-ASCII bytes in Brave-Free-Origin.ps1 at line(s): $(($bad | Select-Object -Unique -First 10) -join ', '). Put translated text in locales\*.json instead."
+          }
+          'ASCII check OK'
+
+      # Locale files are the one place UTF-8 is expected. A BOM or a UTF-16
+      # file would be silently mis-decoded by the runtime loader.
+      - name: Enforce UTF-8 without BOM on locale files
+        shell: pwsh
+        run: |
+          foreach ($file in (Get-ChildItem 'locales' -Filter '*.json' -File)) {
+            $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
+            if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+              throw "$($file.Name) has a UTF-8 BOM. Save it without one."
+            }
+            if ($bytes.Length -ge 2 -and (($bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) -or ($bytes[0] -eq 0xFE -and $bytes[1] -eq 0xFF))) {
+              throw "$($file.Name) looks like UTF-16. Locale files must be UTF-8."
+            }
+            $strict = New-Object System.Text.UTF8Encoding($false, $true)
+            try { [void]$strict.GetString($bytes) }
+            catch { throw "$($file.Name) is not valid UTF-8." }
+          }
+          'Locale encoding OK'
 
       - name: Check launcher target
         shell: pwsh
@@ -36,6 +150,9 @@ jobs:
           if ($bat -notmatch 'Brave-Free-Origin\.ps1') { throw 'Launcher does not reference Brave-Free-Origin.ps1.' }
           'Launcher check OK'
 
+      # The portable zip is a build output, not a tracked source file. It is
+      # produced here and uploaded as an artifact / attached to a release.
+      # tools\ is maintainer-only and deliberately not shipped.
       - name: Build portable zip
         shell: pwsh
         run: |
@@ -45,10 +162,42 @@ jobs:
             'Brave-Free-Origin.bat',
             'Brave-Free-Origin.ps1',
             'README.md',
+            'README.zh-CN.md',
+            'TRANSLATING.md',
             'LICENSE',
-            'images'
+            'images',
+            'locales'
           ) -DestinationPath $out -Force
           Get-FileHash $out -Algorithm SHA256 | Format-List
+
+      - name: Verify portable zip contents
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path 'Brave-Free-Origin.zip'))
+          $names = $zip.Entries.FullName
+          $zip.Dispose()
+          $required = @(
+            'Brave-Free-Origin.bat',
+            'Brave-Free-Origin.ps1',
+            'README.md',
+            'README.zh-CN.md',
+            'TRANSLATING.md',
+            'LICENSE',
+            'locales/en-US.json',
+            'locales/zh-CN.json',
+            'images/screenshot.png'
+          )
+          foreach ($needed in $required) {
+            if ($names -notcontains $needed -and $names -notcontains ($needed -replace '/', '\')) {
+              throw "$needed is missing from the portable zip."
+            }
+          }
+          # tools\ is for maintainers; shipping it would imply it is supported.
+          foreach ($name in $names) {
+            if ($name -match '^tools[\\/]') { throw "tools\ must not be shipped in the portable zip ($name)." }
+          }
+          "Portable zip contents OK ($($names.Count) entries)"
 
       - name: Upload portable zip
         uses: actions/upload-artifact@v4

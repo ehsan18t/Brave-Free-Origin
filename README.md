@@ -645,7 +645,7 @@ For macOS, there's an unofficial companion project:
 
 
 It's independently written and maintained, not a fork of this project, and not officially supported here — check its own README for usage and caveats.
-[简体中文](README.zh-CN.md)
+
 
 ## Sources
 
@@ -654,3 +654,6 @@ It's independently written and maintained, not a fork of this project, and not o
 - [brave-core policy definitions](https://github.com/brave/brave-core/tree/master/components/policy/resources/templates/policy_definitions/BraveSoftware)
 - [Chrome Enterprise Policy List](https://chromeenterprise.google/policies/)
 - Original [MulesGaming/brave-debullshitinator](https://github.com/MulesGaming/brave-debullshitinator)
+
+
+[简体中文](README.zh-CN.md)

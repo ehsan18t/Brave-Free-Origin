@@ -23,7 +23,7 @@ jobs:
         shell: powershell
         run: |
           $failed = $false
-          $files = @(Get-Item 'Brave-Free-Origin.ps1') + @(Get-ChildItem 'src' -Recurse -Filter '*.ps1' -File)
+          $files = @(Get-Item 'Brave-Free-Origin.ps1') + @(Get-ChildItem 'src', 'tweaks' -Recurse -File -Include '*.ps1', '*.psd1')
           foreach ($file in $files) {
             $errors = $null
             $tokens = $null
@@ -56,6 +56,14 @@ jobs:
           .\tools\Test-Locales.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      # Loads tweaks\ through the app's own loader and checks every cross
+      # reference: strings, preset contents, hosts ids, duplicate policies.
+      - name: Validate tweak data (Windows PowerShell 5.1, no arguments)
+        shell: powershell
+        run: |
+          .\tools\Test-Tweaks.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Check generated en-US.json (Windows PowerShell 5.1, no arguments)
         shell: powershell
         run: |
@@ -76,7 +84,7 @@ jobs:
         shell: pwsh
         run: |
           $failed = $false
-          $files = @(Get-Item 'Brave-Free-Origin.ps1') + @(Get-ChildItem 'src' -Recurse -Filter '*.ps1' -File)
+          $files = @(Get-Item 'Brave-Free-Origin.ps1') + @(Get-ChildItem 'src', 'tweaks' -Recurse -File -Include '*.ps1', '*.psd1')
           foreach ($file in $files) {
             $errors = $null
             $tokens = $null
@@ -90,6 +98,12 @@ jobs:
         shell: pwsh
         run: |
           ./tools/Test-Locales.ps1 -MinCoverage 50
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Validate tweak data (PowerShell 7)
+        shell: pwsh
+        run: |
+          ./tools/Test-Tweaks.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Check generated en-US.json is host-independent (PowerShell 7)
@@ -155,6 +169,7 @@ jobs:
           if (-not (Test-Path 'Brave-Free-Origin.bat')) { throw 'Launcher is missing.' }
           if (-not (Test-Path 'Brave-Free-Origin.ps1')) { throw 'PowerShell app is missing.' }
           if (-not (Test-Path 'src' -PathType Container)) { throw 'src folder is missing.' }
+          if (-not (Test-Path 'tweaks' -PathType Container)) { throw 'tweaks folder is missing.' }
           $bat = Get-Content 'Brave-Free-Origin.bat' -Raw
           if ($bat -notmatch 'Brave-Free-Origin\.ps1') { throw 'Launcher does not reference Brave-Free-Origin.ps1.' }
           'Launcher check OK'
@@ -176,7 +191,8 @@ jobs:
             'LICENSE',
             'images',
             'locales',
-            'src'
+            'src',
+            'tweaks'
           ) -DestinationPath $out -Force
           Get-FileHash $out -Algorithm SHA256 | Format-List
 
@@ -204,6 +220,8 @@ jobs:
           $loaded = @([regex]::Matches($block, "'([^']+)'") | ForEach-Object { 'src/' + ($_.Groups[1].Value -replace '\\', '/') })
           if ($loaded.Count -eq 0) { throw 'Could not read the load list from Brave-Free-Origin.ps1.' }
           $required += $loaded
+          # And every tweak data file the loader reads.
+          $required += @(Get-ChildItem 'tweaks' -Recurse -File | ForEach-Object { (Resolve-Path -Relative $_.FullName) -replace '^\.[\\/]', '' -replace '\\', '/' })
           foreach ($needed in $required) {
             if ($names -notcontains $needed -and $names -notcontains ($needed -replace '/', '\')) {
               throw "$needed is missing from the portable zip."

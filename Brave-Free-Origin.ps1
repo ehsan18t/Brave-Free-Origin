@@ -59,13 +59,15 @@ $script:AppVersion = '1.12'
 #   core\     logic and the data model, no controls are created
 #   strings\  the English string catalog
 #   ui\       the window, built top to bottom in the order it appears on screen
+# What the app can change (policies, tasks, services, hosts groups, search
+# engines, presets) is plain data in tweaks\, read by core\Tweaks.ps1.
 $script:AppRoot = $PSScriptRoot
 $script:SourceFiles = @(
     'core\Log.ps1'
     'core\I18n.ps1'
     'core\Settings.ps1'
     'core\Channels.ps1'
-    'core\Data.ps1'
+    'core\Tweaks.ps1'
     'core\Registry.ps1'
     'core\Hosts.ps1'
     'core\SearchStartup.ps1'
@@ -91,24 +93,49 @@ $script:SourceFiles = @(
     'ui\ActionBar.ps1'
 )
 
-# A copy of this file on its own is the most likely way to get here, so say
-# that plainly instead of failing on the first missing function.
-$missingSourceFiles = @($script:SourceFiles | Where-Object {
-    -not (Test-Path -LiteralPath (Join-Path $script:AppRoot "src\$_"))
-})
-if ($missingSourceFiles.Count -gt 0) {
+$script:RequiredTweakFiles = @(
+    'tweaks\system.psd1'
+    'tweaks\hosts.psd1'
+    'tweaks\search.psd1'
+    'tweaks\presets.psd1'
+)
+
+# Shown before the string catalog exists, so it is English only. A startup
+# failure has to be visible: the console window closes as soon as we exit.
+function Show-StartupError {
+    param([string]$Message)
     [System.Windows.Forms.MessageBox]::Show(
-        ("Brave Free Origin cannot start because these files are missing:`r`n`r`n" +
-         (($missingSourceFiles | ForEach-Object { "src\$_" }) -join "`r`n") +
-         "`r`n`r`nExtract the whole folder from the ZIP and run Brave-Free-Origin.bat again."),
+        $Message,
         'Brave Free Origin',
         [System.Windows.Forms.MessageBoxButtons]::OK,
         [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+}
+
+# A copy of this file on its own is the most likely way to get here, so say
+# that plainly instead of failing on the first missing function.
+$missingFiles = @(
+    @($script:SourceFiles | ForEach-Object { "src\$_" }) + $script:RequiredTweakFiles |
+        Where-Object { -not (Test-Path -LiteralPath (Join-Path $script:AppRoot $_)) }
+)
+if (-not (Get-ChildItem -LiteralPath (Join-Path $script:AppRoot 'tweaks\policies') -Filter '*.psd1' -File -ErrorAction SilentlyContinue)) {
+    $missingFiles += 'tweaks\policies\*.psd1'
+}
+if ($missingFiles.Count -gt 0) {
+    Show-StartupError ("Brave Free Origin cannot start because these files are missing:`r`n`r`n" +
+        ($missingFiles -join "`r`n") +
+        "`r`n`r`nExtract the whole folder from the ZIP and run Brave-Free-Origin.bat again.")
     exit 1
 }
 
+# A loader that cannot continue (for example a typo in a tweaks\ file) sets
+# $script:StartupError instead of throwing, so the message stays readable.
+$script:StartupError = $null
 foreach ($sourceFile in $script:SourceFiles) {
     . (Join-Path $script:AppRoot "src\$sourceFile")
+    if ($script:StartupError) {
+        Show-StartupError $script:StartupError
+        exit 1
+    }
 }
 #endregion
 

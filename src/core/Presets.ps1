@@ -4,82 +4,9 @@
 # ============================================================================
 
 $script:ActiveProfile = 'Custom'
-$script:MinimalPolicies = @(
-    'HardwareAccelerationModeEnabled',
-    'BraveRewardsDisabled','BraveWalletDisabled','BraveVPNDisabled',
-    'BraveAIChatEnabled','PasswordManagerEnabled'
-)
-$script:OriginPolicies = @(
-    'HardwareAccelerationModeEnabled',
-    'BraveAIChatEnabled',
-    'BraveNewsDisabled',
-    'BraveP3AEnabled',
-    'BravePlaylistEnabled',
-    'BraveRewardsDisabled',
-    'BraveSpeedreaderEnabled',
-    'BraveStatsPingEnabled',
-    'BraveTalkDisabled',
-    'BraveVPNDisabled',
-    'BraveWalletDisabled',
-    'BraveWaybackMachineEnabled',
-    'BraveWebDiscoveryEnabled',
-    'MetricsReportingEnabled',
-    'TorDisabled',
-    # Shields / privacy-engine policies - keeping ad-block ON is a *performance* win
-    # (fewer requests, less DOM, less JS). It's also Brave's identity. Origin Mode
-    # and everything that derives from it (Privacy + Boost) now enforces these.
-    'DefaultBraveAdblockSetting',
-    'DefaultBraveFingerprintingV2Setting',
-    'DefaultBraveReferrersSetting',
-    'BraveTrackingQueryParametersFilteringEnabled',
-    'BraveDeAmpEnabled',
-    'BraveDebouncingEnabled'
-)
-$script:PerformancePolicies = @(
-    $script:OriginPolicies +
-    @(
-        'BackgroundModeEnabled',
-        'BrowserLabsEnabled',
-        'CloudPrintSubmitEnabled',
-        'DiskCacheSize',
-        'HardwareAccelerationModeEnabled',
-        'HighEfficiencyModeEnabled',
-        'HomepageIsNewTabPage',
-        'HomepageLocation',
-        'IPFSEnabled',
-        'LiveCaptionEnabled',
-        'MediaRouterEnabled',
-        'NetworkPredictionOptions',
-        'NewTabPageLocation',
-        'NTPCustomBackgroundEnabled',
-        'PromotionalTabsEnabled',
-        'QuicAllowed',
-        'ReadingListEnabled',
-        'RestoreOnStartup',
-        'WebRtcEventLogCollectionAllowed',
-        'WebTorrentDisabled',
-        'WelcomePageOnOSUpgradeEnabled'
-    )
-) | Select-Object -Unique
-$script:MaxPrivacyPolicies = @(
-    foreach ($cat in $script:Policies.Keys) {
-        foreach ($policy in $script:Policies[$cat]) {
-            if ($policy.MaxPrivacy) { $policy.Name }
-        }
-    }
-) | Select-Object -Unique
-$script:MaxPerformancePolicies = @(
-    $script:MaxPrivacyPolicies +
-    $script:PerformancePolicies +
-    @(
-        'BookmarkBarEnabled',
-        'PromptForDownloadLocation',
-        'ShowHomeButton',
-        'SpellcheckEnabled'
-    )
-) | Select-Object -Unique
 # Preset ids are stable and language independent; the labels come from the
-# string catalog under preset.<Id>.name / .description / .risk.
+# string catalog under preset.<Id>.name / .description / .risk. What each one
+# ticks is defined in tweaks\presets.psd1.
 $script:PresetKeys = @('Minimal','Recommended','Origin','Performance','MaxPerformance','MaxPrivacy','None','CurrentState','Custom')
 
 function Get-PresetName        { param([string]$Key) if ($script:PresetKeys -contains $Key) { T "preset.$Key.name" }        else { $Key } }
@@ -95,79 +22,44 @@ function Get-PresetNameEn {
     return $Key
 }
 
+# Include, then Flag, then Policies; see tweaks\presets.psd1 for the rules.
+function Get-PresetPolicyNames {
+    param([string]$Preset)
+    $definition = $script:PresetDefinitions[$Preset]
+    if (-not $definition) { return @() }
+    $names = @()
+    foreach ($included in @($definition.Include)) {
+        if ($included) { $names += @(Get-PresetPolicyNames -Preset $included) }
+    }
+    if ($definition.Flag) {
+        foreach ($cat in $script:Policies.Keys) {
+            foreach ($policy in $script:Policies[$cat]) {
+                if ($policy[$definition.Flag]) { $names += $policy.Name }
+            }
+        }
+    }
+    $names += @($definition.Policies | Where-Object { $_ })
+    return @($names | Select-Object -Unique)
+}
+
 function Get-PresetPayload {
     param([string]$Preset)
 
-    # Hosts groups: only auto-tick a group when the corresponding feature is
-    # ALSO disabled by policy in this preset. No orphan blocks.
-    $hostsAlwaysSafe   = @('p3a','variations','stats','webDiscovery')
-    $hostsRewards      = @('rewards')
-    $hostsNews         = @('news')
-    $hostsComponents   = @('components')
-
-    switch ($Preset) {
-        'Recommended' {
-            return @{
-                Policies = @(
-                    foreach ($cat in $script:Policies.Keys) {
-                        foreach ($policy in $script:Policies[$cat]) {
-                            if ($policy.Recommended) { $policy.Name }
-                        }
-                    }
-                )
-                Tasks    = @($script:ScheduledTasks.Name)
-                Services = @()
-                Hosts    = $hostsAlwaysSafe + $hostsRewards + $hostsNews
-            }
+    $definition = $script:PresetDefinitions[$Preset]
+    if (-not $definition) {
+        # Current State and Custom have no payload of their own.
+        return @{
+            Policies = @()
+            Tasks    = @()
+            Services = @()
+            Hosts    = @()
         }
-        'MaxPrivacy' {
-            return @{
-                Policies = @($script:MaxPrivacyPolicies)
-                Tasks    = @($script:ScheduledTasks.Name)
-                Services = @($script:Services.Name)
-                Hosts    = $hostsAlwaysSafe + $hostsRewards + $hostsNews + $hostsComponents
-            }
-        }
-        'Minimal' {
-            return @{
-                Policies = @($script:MinimalPolicies)
-                Tasks    = @()
-                Services = @()
-                Hosts    = $hostsAlwaysSafe + $hostsRewards   # Quick disables Rewards, leaves News on
-            }
-        }
-        'Origin' {
-            return @{
-                Policies = @($script:OriginPolicies)
-                Tasks    = @()
-                Services = @()
-                Hosts    = $hostsAlwaysSafe + $hostsRewards + $hostsNews   # Origin disables both
-            }
-        }
-        'Performance' {
-            return @{
-                Policies = @($script:PerformancePolicies)
-                Tasks    = @($script:ScheduledTasks.Name)
-                Services = @()
-                Hosts    = $hostsAlwaysSafe + $hostsRewards + $hostsNews
-            }
-        }
-        'MaxPerformance' {
-            return @{
-                Policies = @($script:MaxPerformancePolicies)
-                Tasks    = @($script:ScheduledTasks.Name)
-                Services = @($script:Services.Name)
-                Hosts    = $hostsAlwaysSafe + $hostsRewards + $hostsNews + $hostsComponents
-            }
-        }
-        default {
-            return @{
-                Policies = @()
-                Tasks    = @()
-                Services = @()
-                Hosts    = @()
-            }
-        }
+    }
+    return @{
+        Policies = @(Get-PresetPolicyNames -Preset $Preset)
+        Tasks    = $(if ($definition.Tasks)    { @($script:ScheduledTasks.Name) } else { @() })
+        Services = $(if ($definition.Services) { @($script:Services.Name) }       else { @() })
+        Hosts    = @($definition.Hosts | Where-Object { $_ })
     }
 }
 

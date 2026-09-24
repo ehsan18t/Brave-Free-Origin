@@ -173,6 +173,34 @@ function Test-ScriptletAdvancedWriteAllowed {
     return $true
 }
 
+# Brave's filter lists are edited in place without disturbing anything else:
+# each line keeps its own ending (LF or CRLF) and a missing final newline stays
+# missing, so a save changes only the lines that were actually edited. Lines is
+# a string[] that callers edit in place; Crlf remembers which lines ended in CR.
+function Read-ScriptletListFile {
+    param([string]$Path)
+    $parts = [System.IO.File]::ReadAllText($Path) -split "`n"
+    $crlf = New-Object bool[] $parts.Length
+    for ($i = 0; $i -lt $parts.Length; $i++) {
+        if ($parts[$i].EndsWith("`r")) {
+            $crlf[$i] = $true
+            $parts[$i] = $parts[$i].Substring(0, $parts[$i].Length - 1)
+        }
+    }
+    return [pscustomobject]@{ Lines = [string[]]$parts; Crlf = $crlf }
+}
+
+function Write-ScriptletListFile {
+    param([string]$Path, $Document)
+    $text = New-Object System.Text.StringBuilder
+    for ($i = 0; $i -lt $Document.Lines.Length; $i++) {
+        if ($i -gt 0) { [void]$text.Append("`n") }
+        [void]$text.Append($Document.Lines[$i])
+        if ($Document.Crlf[$i]) { [void]$text.Append("`r") }
+    }
+    [System.IO.File]::WriteAllText($Path, $text.ToString(), (New-Object System.Text.UTF8Encoding($false)))
+}
+
 # Enables or disables the rule on one line of a list file, in place: disabling
 # comments it out behind the BFO marker, enabling restores the original rule.
 # Returns $true when the line changed.
@@ -199,13 +227,13 @@ function Set-ScriptletRuleState {
 
     if (-not $Records -or $Records.Count -eq 0) { return 0 }
     $changed = 0
-    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     $byFile = $Records | Group-Object File
 
     foreach ($group in $byFile) {
         $file = $group.Name
-        [void](Backup-ScriptletFile -File $file)
-        $lines = [System.IO.File]::ReadAllLines($file)
+        $doc = Read-ScriptletListFile -Path $file
+        $lines = $doc.Lines
+        $fileChanges = 0
 
         if ($AffectDuplicates) {
             # Every line carrying one of the selected rules, wherever it is.
@@ -214,7 +242,7 @@ function Set-ScriptletRuleState {
             for ($i = 0; $i -lt $lines.Length; $i++) {
                 $original = Get-ScriptletRuleFromLine -Line $lines[$i]
                 if (-not $original -or -not $wanted.ContainsKey($original)) { continue }
-                if (Set-ScriptletLine -Lines $lines -Index $i -Enable $Enable) { $changed++ }
+                if (Set-ScriptletLine -Lines $lines -Index $i -Enable $Enable) { $fileChanges++ }
             }
         } else {
             # Only the exact lines selected, and only if they still hold that rule.
@@ -222,11 +250,16 @@ function Set-ScriptletRuleState {
                 $idx = [int]$record.LineNumber - 1
                 if ($idx -lt 0 -or $idx -ge $lines.Length) { continue }
                 if ((Get-ScriptletRuleFromLine -Line $lines[$idx]) -ne $record.Rule) { continue }
-                if (Set-ScriptletLine -Lines $lines -Index $idx -Enable $Enable) { $changed++ }
+                if (Set-ScriptletLine -Lines $lines -Index $idx -Enable $Enable) { $fileChanges++ }
             }
         }
 
-        [System.IO.File]::WriteAllLines($file, [string[]]$lines, $utf8NoBom)
+        # A file with nothing to change is neither backed up nor rewritten.
+        if ($fileChanges -gt 0) {
+            [void](Backup-ScriptletFile -File $file)
+            Write-ScriptletListFile -Path $file -Document $doc
+            $changed += $fileChanges
+        }
     }
 
     return $changed
@@ -290,9 +323,9 @@ function Import-ScriptletPreferencesAndReapply {
     if ($wanted.Count -eq 0) { return 0 }
 
     $changed = 0
-    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     foreach ($file in (Get-ScriptletListFiles -Root $Root)) {
-        $lines = [System.IO.File]::ReadAllLines($file.FullName)
+        $doc = Read-ScriptletListFile -Path $file.FullName
+        $lines = $doc.Lines
         $fileChanged = $false
         for ($i = 0; $i -lt $lines.Length; $i++) {
             $original = Get-ScriptletRuleFromLine -Line $lines[$i]
@@ -307,7 +340,7 @@ function Import-ScriptletPreferencesAndReapply {
             $changed++
         }
         if ($fileChanged) {
-            [System.IO.File]::WriteAllLines($file.FullName, [string[]]$lines, $utf8NoBom)
+            Write-ScriptletListFile -Path $file.FullName -Document $doc
         }
     }
     return $changed

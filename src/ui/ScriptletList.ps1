@@ -232,9 +232,12 @@ function Step-ScriptletRender {
 
     # Start-ScriptletRender never starts the timer for an empty row set.
     $total = $state.Rows.Count
-    $startTick = [Environment]::TickCount64
+    # A Stopwatch, not [Environment]::TickCount64: that property does not exist
+    # on Windows PowerShell 5.1, where it reads as $null and the time budget
+    # would never end a tick.
+    $tick = [System.Diagnostics.Stopwatch]::StartNew()
     $batch = New-Object System.Collections.Generic.List[System.Windows.Forms.ListViewItem]
-    while ($state.Index -lt $total -and (([Environment]::TickCount64 - $startTick) -lt 25) -and $batch.Count -lt 400) {
+    while ($state.Index -lt $total -and $tick.ElapsedMilliseconds -lt 25 -and $batch.Count -lt 400) {
         [void]$batch.Add((New-ScriptletListItem -Record $state.Rows[$state.Index]))
         $state.Index++
     }
@@ -413,9 +416,9 @@ function Step-ScriptletScan {
         return
     }
 
-    $startTick = [Environment]::TickCount64
+    $tick = [System.Diagnostics.Stopwatch]::StartNew()
     $linesThisTick = 0
-    while ((([Environment]::TickCount64 - $startTick) -lt 35) -and ($linesThisTick -lt 2500)) {
+    while ($tick.ElapsedMilliseconds -lt 35 -and $linesThisTick -lt 2500) {
         if (-not $state.Reader) {
             if ($state.FileIndex -ge $state.Files.Count) {
                 Complete-ScriptletScan

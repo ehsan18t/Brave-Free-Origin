@@ -88,6 +88,10 @@ function ConvertTo-ScriptletRecord {
         [int]$LineNumber
     )
 
+    # Nearly every line of a filter list is not a scriptlet rule. Any accepted
+    # rule is a substring of the line, so this cheap check cannot reject one.
+    if ($Line.IndexOf('##+js(', [System.StringComparison]::Ordinal) -lt 0) { return $null }
+
     $disabledRule = Get-BfoDisabledScriptletRule -Line $Line
     $enabled = -not [bool]$disabledRule
     $rule = if ($disabledRule) { $disabledRule } else { $Line.Trim() }

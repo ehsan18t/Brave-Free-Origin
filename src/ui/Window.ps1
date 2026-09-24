@@ -314,7 +314,7 @@ $ui.CmbTheme.Add_SelectionChanged({
     Save-BfoSetting 'theme' $mode
 })
 
-# Windows theme or accent changed while the app was in the background.
+# Windows switched between light and dark while the app was in the background.
 $script:Window.Add_Activated({ Set-BfoTheme })
 $script:Window.Add_SourceInitialized({ Update-BfoTitleBar })
 $script:Window.Add_ContentRendered({ Update-BfoWindowIcon })

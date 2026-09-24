@@ -10,7 +10,7 @@ It is inspired by [MulesGaming/brave-debullshitinator](https://github.com/MulesG
 
 ![Brave Free Origin GUI](images/screenshot.png)
 
-**New in v2.0:** a completely new interface. The app now looks and behaves like a Windows 11 app: side navigation, setting cards with switches, light and dark themes that follow Windows and your accent color, and a window that stays responsive while it reads or writes your system. The changelog below has the details. The interface is translatable (Simplified Chinese included); see [TRANSLATING.md](TRANSLATING.md) if you want to add your language. It is one JSON file, no PowerShell required.
+**New in v2.0:** a completely new interface. The app now looks and behaves like a Windows 11 app: side navigation, setting cards with switches, light and dark themes that follow Windows, and a window that stays responsive while it reads or writes your system. The changelog below has the details. The interface is translatable (Simplified Chinese included); see [TRANSLATING.md](TRANSLATING.md) if you want to add your language. It is one JSON file, no PowerShell required.
 
 ---
 
@@ -72,7 +72,7 @@ Diagnostic output stays in English on purpose: the Activity log, the **Preview c
 
 ### Theme
 
-By default the app follows Windows: light or dark app mode, and your accent color, including the title bar on Windows 11. **Settings** > **Theme** can pin Light or Dark instead; the choice is remembered in the same `settings.json`.
+By default the app follows Windows' light or dark app mode, including the title bar on Windows 11. The accent is always Windows' default blue. **Settings** > **Theme** can pin Light or Dark instead; the choice is remembered in the same `settings.json`.
 
 ### Files in this folder
 
@@ -109,7 +109,7 @@ The launcher (`.bat`) is essentially one line: it runs the PowerShell script wit
 A new interface, and the groundwork that makes it responsive.
 
 - **A native-feeling window.** The WinForms window is replaced by a WPF one modeled on Windows 11 Settings: side navigation with a live count per page, setting cards you click anywhere to flip, a Home page with one card per mode and a summary of your selection, and a bottom bar with the target channel, Preview and Apply.
-- **Light and dark themes.** Follows the Windows app mode and accent color by default, title bar included on Windows 11. Settings can pin Light or Dark.
+- **Light and dark themes.** Follows the Windows app mode by default, title bar included on Windows 11, with Windows' default blue as the accent. Settings can pin Light or Dark.
 - **No more frozen window.** Reading the current state, Preview, Apply, Verify, Full restore, the hosts buttons and every scriptlet operation run on a background runspace. The window keeps responding, and a progress line in the bottom bar says what is running. Closing the window while something is being written asks you to close a second time.
 - **Pending changes.** The bottom bar shows how many changes are not applied yet, compared with what was last read from or written to this PC. The Hosts page does the same for hosts groups, which it writes separately.
 - **Preview in plain language.** Preview opens on a **What will happen** tab that groups the changes by what they do and warns about side effects, next to the technical report. Every setting in `tweaks\` carries tags for this (an Effect, and Impacts for side effects, see [tweaks/README.md](tweaks/README.md)); the same side effects show as small warning chips on the setting cards.

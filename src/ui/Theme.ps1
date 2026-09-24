@@ -1,12 +1,13 @@
 # ============================================================================
-#  Colors: light and dark palettes, the Windows accent color, the title bar
-#  and the window icon.
+#  Colors: light and dark palettes, the title bar and the window icon.
 #  Dot-sourced by Brave-Free-Origin.ps1; see the load order there.
 # ============================================================================
 
 # Every brush the XAML asks for by DynamicResource. The values follow the
 # Windows 11 design tokens, flattened to solid colors (no Mica: the window
-# paints its own background).
+# paints its own background). The accent is always Windows' default blue
+# (#0078D4), darkened for light mode and lightened for dark mode the way
+# Windows does, whatever accent color the user has picked.
 $script:Palettes = @{
     Light = @{
         WindowBg = '#F3F3F3'; LayerBg = '#F9F9F9'; LayerStroke = '#E5E5E5'
@@ -25,6 +26,8 @@ $script:Palettes = @{
         ChipBg = '#F7F7F7'; ChipStroke = '#E3E3E3'
         RiskLowBg = '#DFF6DD'; RiskLowFg = '#0F7B0F'; RiskMediumBg = '#FFF4CE'; RiskMediumFg = '#8A5300'
         RiskHighBg = '#FDE7E9'; RiskHighFg = '#B3261E'; RiskNeutralBg = '#EFEFEF'; RiskNeutralFg = '#5D5D5D'
+        Accent = '#0068B8'; AccentHover = '#0077D2'; AccentPressed = '#1283DA'; AccentText = '#0068B8'
+        OnAccent = '#FFFFFF'; AccentSubtleBg = '#EBF3F9'
     }
     Dark = @{
         WindowBg = '#202020'; LayerBg = '#272727'; LayerStroke = '#1C1C1C'
@@ -43,6 +46,8 @@ $script:Palettes = @{
         ChipBg = '#2F2F2F'; ChipStroke = '#3A3A3A'
         RiskLowBg = '#393D1B'; RiskLowFg = '#8FD483'; RiskMediumBg = '#433519'; RiskMediumFg = '#F5C84C'
         RiskHighBg = '#442726'; RiskHighFg = '#FF99A4'; RiskNeutralBg = '#333333'; RiskNeutralFg = '#C8C8C8'
+        Accent = '#5FB9FF'; AccentHover = '#45AEFF'; AccentPressed = '#3CA1EF'; AccentText = '#5FB9FF'
+        OnAccent = '#000000'; AccentSubtleBg = '#34434E'
     }
 }
 
@@ -51,113 +56,18 @@ $script:ThemeModes = @('system', 'light', 'dark')
 $script:ThemeMode = 'system'
 $script:ThemeIsDark = $false
 $script:ThemeDictionary = $null
-$script:ThemeSignature = ''
+$script:ThemeDark = $null
 
 function ConvertTo-BfoColor {
     param([string]$Hex)
     return [System.Windows.Media.ColorConverter]::ConvertFromString($Hex)
 }
 
-# These read the registry through .NET rather than the PowerShell registry
-# provider, which costs about 30 ms on its first use at startup.
+# Read through .NET rather than the PowerShell registry provider, which costs
+# about 30 ms on its first use at startup.
 function Test-WindowsDarkMode {
     $value = [Microsoft.Win32.Registry]::GetValue('HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize', 'AppsUseLightTheme', $null)
     return ($null -ne $value -and $value -eq 0)
-}
-
-# AccentColor is stored as 0xAABBGGRR. Windows' own default blue when unset.
-function Get-WindowsAccentColor {
-    try {
-        $value = [Microsoft.Win32.Registry]::GetValue('HKEY_CURRENT_USER\Software\Microsoft\Windows\DWM', 'AccentColor', $null)
-        if ($null -eq $value) { throw 'no accent color' }
-        $bytes = [BitConverter]::GetBytes([int]$value)
-        return [System.Windows.Media.Color]::FromRgb($bytes[0], $bytes[1], $bytes[2])
-    } catch {
-        return [System.Windows.Media.Color]::FromRgb(0x00, 0x78, 0xD4)
-    }
-}
-
-# ---- Accent shades --------------------------------------------------------------
-# Windows derives lighter and darker accent shades for each theme. The same
-# idea here: keep the hue and saturation, move the lightness into a band that
-# reads well on that theme's background.
-function ConvertTo-Hsl {
-    param([System.Windows.Media.Color]$Color)
-    $r = $Color.R / 255.0; $g = $Color.G / 255.0; $b = $Color.B / 255.0
-    $max = [Math]::Max($r, [Math]::Max($g, $b)); $min = [Math]::Min($r, [Math]::Min($g, $b))
-    $l = ($max + $min) / 2
-    if ($max -eq $min) { return @(0.0, 0.0, $l) }
-    $d = $max - $min
-    $s = if ($l -gt 0.5) { $d / (2 - $max - $min) } else { $d / ($max + $min) }
-    if ($max -eq $r)     { $h = ($g - $b) / $d + $(if ($g -lt $b) { 6 } else { 0 }) }
-    elseif ($max -eq $g) { $h = ($b - $r) / $d + 2 }
-    else                 { $h = ($r - $g) / $d + 4 }
-    return @(($h / 6), $s, $l)
-}
-
-function ConvertFrom-Hsl {
-    param([double]$H, [double]$S, [double]$L)
-    $L = [Math]::Max(0.0, [Math]::Min(1.0, $L))
-    if ($S -le 0) {
-        $v = [byte][Math]::Round($L * 255)
-        return [System.Windows.Media.Color]::FromRgb($v, $v, $v)
-    }
-    $q = if ($L -lt 0.5) { $L * (1 + $S) } else { $L + $S - $L * $S }
-    $p = 2 * $L - $q
-    $channels = foreach ($t in @(($H + 1.0 / 3), $H, ($H - 1.0 / 3))) {
-        if ($t -lt 0) { $t += 1 }
-        if ($t -gt 1) { $t -= 1 }
-        if ($t -lt 1.0 / 6)     { $v = $p + ($q - $p) * 6 * $t }
-        elseif ($t -lt 0.5)     { $v = $q }
-        elseif ($t -lt 2.0 / 3) { $v = $p + ($q - $p) * (2.0 / 3 - $t) * 6 }
-        else                    { $v = $p }
-        [byte][Math]::Round($v * 255)
-    }
-    return [System.Windows.Media.Color]::FromRgb($channels[0], $channels[1], $channels[2])
-}
-
-function Get-RelativeLuminance {
-    param([System.Windows.Media.Color]$Color)
-    $sum = 0.0
-    foreach ($pair in @(@($Color.R, 0.2126), @($Color.G, 0.7152), @($Color.B, 0.0722))) {
-        $c = $pair[0] / 255.0
-        $linear = if ($c -le 0.03928) { $c / 12.92 } else { [Math]::Pow(($c + 0.055) / 1.055, 2.4) }
-        $sum += $linear * $pair[1]
-    }
-    return $sum
-}
-
-function Get-MixedColor {
-    param([System.Windows.Media.Color]$Base, [System.Windows.Media.Color]$Over, [double]$Amount)
-    $mix = { param($a, $b) [byte][Math]::Round($a + ($b - $a) * $Amount) }
-    return [System.Windows.Media.Color]::FromRgb((& $mix $Base.R $Over.R), (& $mix $Base.G $Over.G), (& $mix $Base.B $Over.B))
-}
-
-function Get-AccentShades {
-    param([System.Windows.Media.Color]$Accent, [bool]$Dark, [System.Windows.Media.Color]$CardBg)
-    $hsl = ConvertTo-Hsl $Accent
-    $h = $hsl[0]; $s = $hsl[1]; $l = $hsl[2]
-    if ($Dark) {
-        $fill    = [Math]::Min(0.78, [Math]::Max(0.62, $l + 0.27))
-        $hover   = $fill - 0.05
-        $pressed = $fill - 0.10
-    } else {
-        $fill    = [Math]::Min(0.40, [Math]::Max(0.25, $l * 0.87))
-        $hover   = $fill + 0.05
-        $pressed = $fill + 0.10
-    }
-    $fillColor = ConvertFrom-Hsl $h $s $fill
-    # Whichever of black and white contrasts more with the fill.
-    $luminance = Get-RelativeLuminance $fillColor
-    $onAccent = if ((1.05 / ($luminance + 0.05)) -ge (($luminance + 0.05) / 0.05)) { '#FFFFFF' } else { '#000000' }
-    return @{
-        Accent         = $fillColor
-        AccentHover    = (ConvertFrom-Hsl $h $s $hover)
-        AccentPressed  = (ConvertFrom-Hsl $h ($s * 0.85) $pressed)
-        AccentText     = $fillColor
-        OnAccent       = (ConvertTo-BfoColor $onAccent)
-        AccentSubtleBg = (Get-MixedColor $CardBg $fillColor $(if ($Dark) { 0.16 } else { 0.08 }))
-    }
 }
 
 # ---- Applying a theme -----------------------------------------------------------
@@ -169,20 +79,16 @@ function Set-BfoTheme {
     if ($script:ThemeModes -notcontains $Mode) { $Mode = 'system' }
     $script:ThemeMode = $Mode
     $dark = switch ($Mode) { 'dark' { $true } 'light' { $false } default { Test-WindowsDarkMode } }
-    $accent = Get-WindowsAccentColor
 
     # Cheap to call often (every time the window is activated): nothing is
-    # rebuilt unless the theme or the accent actually changed.
-    $signature = "$dark|$accent"
-    if (-not $Force -and $signature -eq $script:ThemeSignature) { return }
-    $script:ThemeSignature = $signature
+    # rebuilt unless light or dark actually changed.
+    if (-not $Force -and $dark -eq $script:ThemeDark) { return }
+    $script:ThemeDark = $dark
     $script:ThemeIsDark = $dark
 
     $palette = $script:Palettes[$(if ($dark) { 'Dark' } else { 'Light' })]
     $colors = @{}
     foreach ($key in $palette.Keys) { $colors[$key] = ConvertTo-BfoColor $palette[$key] }
-    $shades = Get-AccentShades -Accent $accent -Dark $dark -CardBg $colors['CardBg']
-    foreach ($key in $shades.Keys) { $colors[$key] = $shades[$key] }
 
     $dictionary = [System.Windows.ResourceDictionary]::new()
     foreach ($key in $colors.Keys) {

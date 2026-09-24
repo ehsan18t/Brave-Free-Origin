@@ -13,26 +13,15 @@ Set-FlowTabTitleKey $hostsTab 'tab.hosts'
 $hostsTab.AutoScroll = $true
 $hostsTab.BackColor = [System.Drawing.Color]::White
 
-$hostsIntro = New-Object System.Windows.Forms.Label
-[void](Set-Loc $hostsIntro 'hostsTab.intro')
-[void](Set-LocFont $hostsIntro -Size 9)
-$hostsIntro.Location = New-Object System.Drawing.Point(10, 8)
-$hostsIntro.Size = New-Object System.Drawing.Size(1100, 36)
-$hostsIntro.ForeColor = [System.Drawing.Color]::FromArgb(70, 70, 90)
-$hostsTab.Controls.Add($hostsIntro)
-
-$hostsWarn = New-Object System.Windows.Forms.Label
-[void](Set-Loc $hostsWarn 'hostsTab.warn')
-$hostsWarn.Location = New-Object System.Drawing.Point(10, 44)
-$hostsWarn.Size = New-Object System.Drawing.Size(1100, 18)
-$hostsWarn.ForeColor = [System.Drawing.Color]::FromArgb(160, 70, 30)
-[void](Set-LocFont $hostsWarn -Size 8.5 -Semibold)
-$hostsTab.Controls.Add($hostsWarn)
+[void](New-LocControl Label $hostsTab 'hostsTab.intro' 10 8 1100 36 -FontSize 9 -ForeColor ([System.Drawing.Color]::FromArgb(70, 70, 90)))
+[void](New-LocControl Label $hostsTab 'hostsTab.warn' 10 44 1100 18 -FontSize 8.5 -Semibold -ForeColor ([System.Drawing.Color]::FromArgb(160, 70, 30)))
 
 $script:HostsCheckBoxes = @()
 $y = 70
 $script:HostsCheckBoxIndex = @{}
 foreach ($block in $script:HostsBlocks) {
+    # Unlike the policy rows this caption is translated (group name plus
+    # domain count), and ticking a group does not change the active mode.
     $cb = New-Object System.Windows.Forms.CheckBox
     $cb.Location = New-Object System.Drawing.Point(15, $y)
     $cb.Size = New-Object System.Drawing.Size(360, 20)
@@ -47,20 +36,11 @@ foreach ($block in $script:HostsBlocks) {
     # count and the translated name stay in sync.
     [void](Set-Loc $cb 'hostsTab.groupLabel' -ArgsScript ([scriptblock]::Create(
         "@((T '$($block.NameKey)'), $($block.Domains.Count))")))
-    [void](Set-LocTooltip $cb $block.DescriptionKey)
+    Set-LocTooltip $cb $block.DescriptionKey
     $hostsTab.Controls.Add($cb)
     $script:HostsCheckBoxes += $cb
 
-    $desc = New-Object System.Windows.Forms.Label
-    $desc.Location = New-Object System.Drawing.Point(385, ($y + 2))
-    # Same height rule as every other row description, so the initial build
-    # and a later language switch agree on the geometry.
-    $desc.Size = New-Object System.Drawing.Size(720, (Get-PolicyDescHeight))
-    $desc.ForeColor = [System.Drawing.Color]::DimGray
-    $desc.Font = Get-BfoUiFont -Size (Get-PolicyDescFontSize)
-    [void](Set-Loc $desc $block.DescriptionKey)
-    $hostsTab.Controls.Add($desc)
-    [void]$script:RowDescLabels.Add($desc)
+    $desc = New-RowDescLabel -Parent $hostsTab -Key $block.DescriptionKey -X 385 -Y ($y + 2) -Width 720
 
     $domLabel = New-Object System.Windows.Forms.Label
     $domLabel.Text = ($block.Domains -join ', ')
@@ -83,79 +63,46 @@ foreach ($block in $script:HostsBlocks) {
     $y += 44
 }
 
-$btnApplyHosts = New-Object System.Windows.Forms.Button
-[void](Set-Loc $btnApplyHosts 'hostsTab.apply')
-$btnApplyHosts.Size = New-Object System.Drawing.Size(160, 30)
-$btnApplyHosts.Location = New-Object System.Drawing.Point(15, ($y + 10))
-$btnApplyHosts.BackColor = [System.Drawing.Color]::FromArgb(37, 99, 63)
-$btnApplyHosts.ForeColor = [System.Drawing.Color]::White
-$btnApplyHosts.Add_Click({
+$btnApplyHosts = New-LocControl Button $hostsTab 'hostsTab.apply' 15 ($y + 10) 160 30 `
+    -BackColor ([System.Drawing.Color]::FromArgb(37, 99, 63)) -ForeColor 'White' -OnClick {
     $domains = @(Get-SelectedHostsDomains)
-    if ($domains.Count -eq 0) {
-        $ans = [System.Windows.Forms.MessageBox]::Show(
-            (T 'msg.hosts.noGroups'),
-            (T 'msg.title.hosts'), 'YesNo', 'Question')
-        if ($ans -ne 'Yes') { return }
+    $confirm = if ($domains.Count -eq 0) {
+        Show-BfoMessage 'msg.hosts.noGroups' -TitleKey 'msg.title.hosts' -Icon Question -YesNo
     } else {
-        $msg = T 'msg.hosts.confirmApply' @($domains.Count, $script:HostsFile)
-        $ans = [System.Windows.Forms.MessageBox]::Show($msg, (T 'msg.title.hosts'), 'YesNo', 'Question')
-        if ($ans -ne 'Yes') { return }
+        Show-BfoMessage 'msg.hosts.confirmApply' @($domains.Count, $script:HostsFile) -TitleKey 'msg.title.hosts' -Icon Question -YesNo
     }
+    if (-not $confirm) { return }
     try {
         Set-HostsBlockDomains -Domains $domains
-        [System.Windows.Forms.MessageBox]::Show((T 'msg.hosts.applied' @($domains.Count)), (T 'msg.title.done'), 'OK', 'Information') | Out-Null
+        Show-BfoMessage 'msg.hosts.applied' @($domains.Count) -TitleKey 'msg.title.done'
     } catch {
         Write-Log "Hosts apply failed: $_" 'ERR'
-        [System.Windows.Forms.MessageBox]::Show((T 'msg.failed' @("$_")), (T 'msg.title.error'), 'OK', 'Error') | Out-Null
+        Show-BfoMessage 'msg.failed' @("$_") -TitleKey 'msg.title.error' -Icon Error
     }
-})
-$hostsTab.Controls.Add($btnApplyHosts)
+}
 
-$btnClearHosts = New-Object System.Windows.Forms.Button
-[void](Set-Loc $btnClearHosts 'hostsTab.remove')
-$btnClearHosts.Size = New-Object System.Drawing.Size(160, 30)
-$btnClearHosts.Location = New-Object System.Drawing.Point(185, ($y + 10))
-$btnClearHosts.Add_Click({
-    $ans = [System.Windows.Forms.MessageBox]::Show(
-        (T 'msg.hosts.confirmRemove'),
-        (T 'msg.title.hosts'), 'YesNo', 'Warning')
-    if ($ans -ne 'Yes') { return }
+$btnClearHosts = New-LocControl Button $hostsTab 'hostsTab.remove' 185 ($y + 10) 160 30 -OnClick {
+    if (-not (Show-BfoMessage 'msg.hosts.confirmRemove' -TitleKey 'msg.title.hosts' -Icon Warning -YesNo)) { return }
     try {
         Clear-HostsBlock
         foreach ($cb in $script:HostsCheckBoxes) { $cb.Checked = $false }
-        [System.Windows.Forms.MessageBox]::Show((T 'msg.hosts.removed'), (T 'msg.title.done'), 'OK', 'Information') | Out-Null
+        Show-BfoMessage 'msg.hosts.removed' -TitleKey 'msg.title.done'
     } catch {
-        [System.Windows.Forms.MessageBox]::Show((T 'msg.failed' @("$_")), (T 'msg.title.error'), 'OK', 'Error') | Out-Null
+        Show-BfoMessage 'msg.failed' @("$_") -TitleKey 'msg.title.error' -Icon Error
     }
-})
-$hostsTab.Controls.Add($btnClearHosts)
+}
 
-$btnLoadHosts = New-Object System.Windows.Forms.Button
-[void](Set-Loc $btnLoadHosts 'hostsTab.load')
-$btnLoadHosts.Size = New-Object System.Drawing.Size(160, 30)
-$btnLoadHosts.Location = New-Object System.Drawing.Point(355, ($y + 10))
-$btnLoadHosts.Add_Click({
+$btnLoadHosts = New-LocControl Button $hostsTab 'hostsTab.load' 355 ($y + 10) 160 30 -OnClick {
     $current = @(Get-HostsCurrentDomains)
     Sync-HostsCheckBoxes -Current $current
     Write-Log "Hosts state loaded: $($current.Count) domain(s) currently blocked."
-})
-$hostsTab.Controls.Add($btnLoadHosts)
+}
 
-$btnPreviewHosts = New-Object System.Windows.Forms.Button
-[void](Set-Loc $btnPreviewHosts 'hostsTab.preview')
-$btnPreviewHosts.Size = New-Object System.Drawing.Size(130, 30)
-$btnPreviewHosts.Location = New-Object System.Drawing.Point(525, ($y + 10))
-$btnPreviewHosts.Add_Click({
+$btnPreviewHosts = New-LocControl Button $hostsTab 'hostsTab.preview' 525 ($y + 10) 130 30 -OnClick {
     Show-TextReport -Title (T 'report.hostsTitle') -Text (New-HostsPlanReport) -DefaultFileName "brave-free-origin-hosts-preview-$(Get-Date -Format 'yyyyMMdd-HHmmss').txt"
-})
-$hostsTab.Controls.Add($btnPreviewHosts)
+}
 
-$btnOpenHosts = New-Object System.Windows.Forms.Button
-[void](Set-Loc $btnOpenHosts 'hostsTab.open')
-$btnOpenHosts.Size = New-Object System.Drawing.Size(140, 30)
-$btnOpenHosts.Location = New-Object System.Drawing.Point(665, ($y + 10))
-$btnOpenHosts.Add_Click({ Start-Process notepad.exe $script:HostsFile })
-$hostsTab.Controls.Add($btnOpenHosts)
+$btnOpenHosts = New-LocControl Button $hostsTab 'hostsTab.open' 665 ($y + 10) 140 30 -OnClick { Start-Process notepad.exe $script:HostsFile }
 
 # The button strip flows after the group rows so filtering does not leave a
 # hole between the last visible group and the actions.

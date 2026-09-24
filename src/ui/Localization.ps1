@@ -97,29 +97,10 @@ function Update-UiLanguage {
 }
 
 # ---- Localized widgets that are not plain .Text properties ------------------
+# Channel labels take the channel id ("Beta  (installed)"); the "All installed
+# channels" label has no placeholder, so passing it the id changes nothing.
 function Update-ChannelComboLabels {
-    if (-not $script:ChannelCombo) { return }
-    $keep = Get-ComboId -Combo $script:ChannelCombo -Ids $script:ChannelIds
-    Push-SuppressSelectionEvents
-    try {
-        $script:ChannelCombo.BeginUpdate()
-        try {
-            $script:ChannelCombo.Items.Clear()
-            for ($i = 0; $i -lt @($script:ChannelIds).Count; $i++) {
-                $id  = @($script:ChannelIds)[$i]
-                $key = @($script:ChannelLabelKeys)[$i]
-                if ($id -eq '__ALL__') { [void]$script:ChannelCombo.Items.Add((T $key)) }
-                else                   { [void]$script:ChannelCombo.Items.Add((T $key @($id))) }
-            }
-        } finally {
-            $script:ChannelCombo.EndUpdate()
-        }
-        if (-not (Set-ComboId -Combo $script:ChannelCombo -Ids $script:ChannelIds -Id $keep)) {
-            if ($script:ChannelCombo.Items.Count -gt 0) { $script:ChannelCombo.SelectedIndex = 0 }
-        }
-    } finally {
-        Pop-SuppressSelectionEvents
-    }
+    Set-ComboLabels -Combo $script:ChannelCombo -Ids $script:ChannelIds -LabelKeys $script:ChannelLabelKeys -FormatWithId
 }
 
 # The three custom-URL text boxes are enabled purely as a function of their

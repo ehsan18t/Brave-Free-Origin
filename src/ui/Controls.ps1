@@ -1,7 +1,108 @@
 # ============================================================================
-#  Shared UI helpers: the text report window and ComboBox id plumbing.
+#  Shared UI helpers: building localized controls, message boxes, the text
+#  report window and ComboBox id plumbing.
 #  Dot-sourced by Brave-Free-Origin.ps1; see the load order there.
 # ============================================================================
+
+# Builds one control, binds its text to a string key, places it and adds it to
+# Parent, replacing the usual New-Object / Set-Loc / Location / Size / font /
+# Controls.Add block. Everything after Y is optional: FontSize registers a
+# localized font, Width is skipped for auto-sized labels, and OnClick is written
+# at the call site, so it sees the same variables a hand-built handler would.
+function New-LocControl {
+    param(
+        [string]$Type,
+        $Parent,
+        [string]$Key,
+        [int]$X,
+        [int]$Y,
+        [int]$Width = 0,
+        [int]$Height = 0,
+        [single]$FontSize = 0,
+        [switch]$Semibold,
+        $ForeColor,
+        $BackColor,
+        [scriptblock]$OnClick,
+        [string]$TipKey,
+        [object[]]$FormatArgs
+    )
+    $control = New-Object "System.Windows.Forms.$Type"
+    if ($Key) { [void](Set-Loc $control $Key -FormatArgs $FormatArgs) }
+    if ($FontSize -gt 0) { [void](Set-LocFont $control -Size $FontSize -Semibold:$Semibold) }
+    $control.Location = New-Object System.Drawing.Point($X, $Y)
+    if ($Width -gt 0) { $control.Size = New-Object System.Drawing.Size($Width, $Height) }
+    if ($ForeColor) { $control.ForeColor = $ForeColor }
+    if ($BackColor) { $control.BackColor = $BackColor }
+    if ($OnClick) { $control.Add_Click($OnClick) }
+    if ($TipKey) { Set-LocTooltip $control $TipKey }
+    $Parent.Controls.Add($control)
+    return $control
+}
+
+# ---- Setting rows -------------------------------------------------------------
+# Policy, task, service and hosts rows share one shape: a checkbox, and a grey
+# description beside it that the language switch re-sizes (RowDescLabels).
+# Ticking a row by hand turns the active mode into Custom.
+$script:OnRowChecked = {
+    if ($script:SuppressSelectionEvents) { return }
+    Set-CustomMode
+    Update-ConfigurationFilter
+}
+
+# A row checkbox captioned with a raw identifier (policy, task or service name).
+# Not translated on purpose: users cross-check it against brave://policy,
+# services.msc or Task Scheduler, and Consolas has no CJK coverage anyway.
+function New-RowCheckBox {
+    param($Parent, [string]$Text, [int]$Y, [int]$Width, $Tag, [string]$TipKey)
+    $cb = New-Object System.Windows.Forms.CheckBox
+    $cb.Text = $Text
+    $cb.Location = New-Object System.Drawing.Point(15, $Y)
+    $cb.Size = New-Object System.Drawing.Size($Width, 20)
+    $cb.Font = New-Object System.Drawing.Font('Consolas', 9)
+    $cb.Tag = $Tag
+    $cb.Add_CheckedChanged($script:OnRowChecked)
+    Set-LocTooltip $cb $TipKey
+    $Parent.Controls.Add($cb)
+    return $cb
+}
+
+function New-RowDescLabel {
+    param($Parent, [string]$Key, [int]$X, [int]$Y, [int]$Width)
+    $desc = New-Object System.Windows.Forms.Label
+    $desc.Location = New-Object System.Drawing.Point($X, $Y)
+    $desc.Size = New-Object System.Drawing.Size($Width, (Get-PolicyDescHeight))
+    $desc.ForeColor = [System.Drawing.Color]::DimGray
+    $desc.Font = Get-BfoUiFont -Size (Get-PolicyDescFontSize)
+    [void](Set-Loc $desc $Key)
+    $Parent.Controls.Add($desc)
+    [void]$script:RowDescLabels.Add($desc)
+    return $desc
+}
+
+# Every message box: text and title are string keys. With -YesNo it returns
+# $true when the user answered Yes; otherwise it returns nothing.
+function Show-BfoMessage {
+    param(
+        [string]$Key,
+        [object[]]$FormatArgs,
+        [string]$TitleKey = 'msg.title.app',
+        [ValidateSet('None', 'Information', 'Warning', 'Error', 'Question')][string]$Icon = 'Information',
+        [switch]$YesNo
+    )
+    $buttons = if ($YesNo) { 'YesNo' } else { 'OK' }
+    $answer = [System.Windows.Forms.MessageBox]::Show((T $Key $FormatArgs), (T $TitleKey), $buttons, $Icon)
+    if ($YesNo) { return ($answer -eq 'Yes') }
+}
+
+# Opens a URL in the installed Stable Brave. Returns $false when Brave is not
+# installed, so the caller can fall back or explain.
+function Open-BraveUrl {
+    param([string]$Url)
+    $exe = Test-BraveInstalled
+    if (-not $exe) { return $false }
+    Start-Process $exe $Url
+    return $true
+}
 
 function Show-TextReport {
     param(
@@ -93,8 +194,9 @@ function Set-ComboId {
 # Relabelling is Items.Clear() + refill, which drives SelectedIndex to -1 and
 # back. Both transitions raise SelectedIndexChanged, so the handlers are muted
 # for the duration and the previously selected stable id is restored exactly.
+# -FormatWithId passes each item's id into its label (e.g. "{0} (installed)").
 function Set-ComboLabels {
-    param($Combo, $Ids, $LabelKeys)
+    param($Combo, $Ids, $LabelKeys, [switch]$FormatWithId)
     if (-not $Combo) { return }
     $keep = Get-ComboId -Combo $Combo -Ids $Ids
     Push-SuppressSelectionEvents
@@ -102,7 +204,11 @@ function Set-ComboLabels {
         $Combo.BeginUpdate()
         try {
             $Combo.Items.Clear()
-            foreach ($k in @($LabelKeys)) { [void]$Combo.Items.Add((T $k)) }
+            $keys = @($LabelKeys); $idList = @($Ids)
+            for ($i = 0; $i -lt $keys.Count; $i++) {
+                $label = if ($FormatWithId) { T $keys[$i] @($idList[$i]) } else { T $keys[$i] }
+                [void]$Combo.Items.Add($label)
+            }
         } finally {
             $Combo.EndUpdate()
         }
@@ -128,4 +234,16 @@ function Set-PolicyChoiceId {
         [void](Set-ComboId -Combo $combo -Ids $script:PolicyChoiceIds[$Policy.Name] -Id $ChoiceId)
     }
     return $true
+}
+
+# Same, starting from a stored value (registry, config file) instead of an id.
+# A value that matches no choice leaves the policy as it is.
+function Set-PolicyChoiceByValue {
+    param($Policy, $Value)
+    foreach ($choiceId in $Policy.Choices.Keys) {
+        if ("$($Policy.Choices[$choiceId])" -eq "$Value") {
+            [void](Set-PolicyChoiceId -Policy $Policy -ChoiceId $choiceId)
+            return
+        }
+    }
 }

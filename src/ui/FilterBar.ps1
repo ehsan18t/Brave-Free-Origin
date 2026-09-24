@@ -12,36 +12,15 @@ $filterPanel.Size = New-Object System.Drawing.Size(1145, 32)
 $filterPanel.Anchor = 'Top, Left, Right'
 $form.Controls.Add($filterPanel)
 
-$lblFilter = New-Object System.Windows.Forms.Label
-$lblFilter.Location = New-Object System.Drawing.Point(4, 8)
+$lblFilter = New-LocControl Label $filterPanel 'filter.label' 4 8 -FontSize 9 -Semibold
 $lblFilter.AutoSize = $true
-[void](Set-LocFont $lblFilter -Size 9 -Semibold)
-[void](Set-Loc $lblFilter 'filter.label')
-$filterPanel.Controls.Add($lblFilter)
 
-$script:TxtConfigFilter = New-Object System.Windows.Forms.TextBox
-$script:TxtConfigFilter.Location = New-Object System.Drawing.Point(140, 5)
-$script:TxtConfigFilter.Size = New-Object System.Drawing.Size(430, 22)
+$script:TxtConfigFilter = New-LocControl TextBox $filterPanel '' 140 5 430 22 -TipKey 'filter.placeholder'
 $script:TxtConfigFilter.Add_TextChanged({ Start-FilterDebounce })
-$filterPanel.Controls.Add($script:TxtConfigFilter)
-[void](Set-LocTooltip $script:TxtConfigFilter 'filter.placeholder')
 
-$script:ChkSelectedOnly = New-Object System.Windows.Forms.CheckBox
-$script:ChkSelectedOnly.Location = New-Object System.Drawing.Point(582, 6)
-$script:ChkSelectedOnly.Size = New-Object System.Drawing.Size(160, 20)
+$script:ChkSelectedOnly = New-LocControl CheckBox $filterPanel 'filter.selectedOnly' 582 6 160 20
 $script:ChkSelectedOnly.Add_CheckedChanged({ Update-ConfigurationFilter })
-[void](Set-Loc $script:ChkSelectedOnly 'filter.selectedOnly')
-$filterPanel.Controls.Add($script:ChkSelectedOnly)
 
-$btnClearFilter = New-Object System.Windows.Forms.Button
-$btnClearFilter.Location = New-Object System.Drawing.Point(748, 4)
-$btnClearFilter.Size = New-Object System.Drawing.Size(80, 24)
-$btnClearFilter.Add_Click({ Clear-ConfigurationFilter })
-[void](Set-Loc $btnClearFilter 'filter.clear')
-$filterPanel.Controls.Add($btnClearFilter)
+[void](New-LocControl Button $filterPanel 'filter.clear' 748 4 80 24 -OnClick { Clear-ConfigurationFilter })
 
-$script:LblFilterCount = New-Object System.Windows.Forms.Label
-$script:LblFilterCount.Location = New-Object System.Drawing.Point(840, 8)
-$script:LblFilterCount.Size = New-Object System.Drawing.Size(300, 18)
-$script:LblFilterCount.ForeColor = [System.Drawing.Color]::DimGray
-$filterPanel.Controls.Add($script:LblFilterCount)
+$script:LblFilterCount = New-LocControl Label $filterPanel '' 840 8 300 18 -ForeColor 'DimGray'

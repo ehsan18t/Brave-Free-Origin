@@ -70,13 +70,13 @@ function Import-Tweaks {
     foreach ($file in @(Get-ChildItem -LiteralPath (Join-Path $script:TweaksDir 'policies') -Filter '*.psd1' -File | Sort-Object Name)) {
         $relative = "policies\$($file.Name)"
         $data = Import-TweakFile $relative
-        Assert-TweakField ([bool]$data.Category) $relative 'Category is missing.'
-        Assert-TweakField (-not $script:Policies.Contains($data.Category)) $relative "Category '$($data.Category)' is already used by another file."
+        Assert-TweakField -Condition ([bool]$data.Category) -RelativePath $relative -Message 'Category is missing.'
+        Assert-TweakField -Condition (-not $script:Policies.Contains($data.Category)) -RelativePath $relative -Message "Category '$($data.Category)' is already used by another file."
         $list = @()
         foreach ($entry in $data.Policies) {
-            Assert-TweakField ($entry -is [hashtable] -and $entry.Name) $relative 'Every policy needs a Name.'
-            Assert-TweakField (@('DWORD', 'STRING') -contains $entry.Type) $relative "$($entry.Name): Type must be 'DWORD' or 'STRING'."
-            Assert-TweakField ($entry.ContainsKey('ApplyValue')) $relative "$($entry.Name): ApplyValue is missing."
+            Assert-TweakField -Condition ($entry -is [hashtable] -and $entry.Name) -RelativePath $relative -Message 'Every policy needs a Name.'
+            Assert-TweakField -Condition (@('DWORD', 'STRING') -contains $entry.Type) -RelativePath $relative -Message "$($entry.Name): Type must be 'DWORD' or 'STRING'."
+            Assert-TweakField -Condition ($entry.ContainsKey('ApplyValue')) -RelativePath $relative -Message "$($entry.Name): ApplyValue is missing."
             $policy = @{}
             foreach ($key in $entry.Keys) { $policy[$key] = $entry[$key] }
             if ($entry.Choices) {

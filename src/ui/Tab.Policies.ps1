@@ -31,67 +31,34 @@ foreach ($cat in $script:Policies.Keys) {
     $tab.AutoScroll = $true
     $tab.BackColor = [System.Drawing.Color]::White
 
-    $selAll = New-Object System.Windows.Forms.LinkLabel
-    [void](Set-Loc $selAll 'policyTab.selectAll')
-    $selAll.Location = New-Object System.Drawing.Point(10, 8)
-    $selAll.AutoSize = $true
-    $selAll.Tag = $cat
-    $selAll.Add_LinkClicked({
-        $myCat = $this.Tag
-        Push-SuppressSelectionEvents
-        try {
-            foreach ($cb in $script:CheckBoxes) {
-                if ($cb.Tag.Category -eq $myCat) { $cb.Checked = $true }
+    # Select all / Select none: tick or untick every policy on this tab.
+    foreach ($link in @(@{ Key = 'policyTab.selectAll'; X = 10; Value = $true },
+                        @{ Key = 'policyTab.selectNone'; X = 90; Value = $false })) {
+        $sel = New-LocControl LinkLabel $tab $link.Key $link.X 8
+        $sel.AutoSize = $true
+        $sel.Tag = @{ Category = $cat; Value = $link.Value }
+        $sel.Add_LinkClicked({
+            Push-SuppressSelectionEvents
+            try {
+                foreach ($cb in $script:CheckBoxes) {
+                    if ($cb.Tag.Category -eq $this.Tag.Category) { $cb.Checked = $this.Tag.Value }
+                }
+            } finally {
+                Pop-SuppressSelectionEvents
             }
-        } finally {
-            Pop-SuppressSelectionEvents
-        }
-        $script:ActiveProfile = 'Custom'
-        Update-SelectionSummary
-        Update-ConfigurationFilter
-    })
-    $tab.Controls.Add($selAll)
-
-    $selNone = New-Object System.Windows.Forms.LinkLabel
-    [void](Set-Loc $selNone 'policyTab.selectNone')
-    $selNone.Location = New-Object System.Drawing.Point(90, 8)
-    $selNone.AutoSize = $true
-    $selNone.Tag = $cat
-    $selNone.Add_LinkClicked({
-        $myCat = $this.Tag
-        Push-SuppressSelectionEvents
-        try {
-            foreach ($cb in $script:CheckBoxes) {
-                if ($cb.Tag.Category -eq $myCat) { $cb.Checked = $false }
-            }
-        } finally {
-            Pop-SuppressSelectionEvents
-        }
-        $script:ActiveProfile = 'Custom'
-        Update-SelectionSummary
-        Update-ConfigurationFilter
-    })
-    $tab.Controls.Add($selNone)
-
-    $y = 35
-    foreach ($p in $script:Policies[$cat]) {
-        $cb = New-Object System.Windows.Forms.CheckBox
-        # The caption is the raw registry value name. It is deliberately NOT
-        # translated: users cross-check it against brave://policy, and the
-        # Consolas face has no CJK coverage anyway. Only the description is
-        # localized.
-        if ($p.Choices) { $cb.Text = $p.Name } else { $cb.Text = "$($p.Name)    =>  $($p.ApplyValue)" }
-        $cb.Location = New-Object System.Drawing.Point(15, $y)
-        $cb.Size = New-Object System.Drawing.Size(($(if ($p.Choices) { 300 } else { 450 })), 20)
-        $cb.Font = New-Object System.Drawing.Font('Consolas', 9)
-        $cb.Tag = @{Policy = $p; Category = $cat}
-        $cb.Add_CheckedChanged({
-            if ($script:SuppressSelectionEvents) { return }
             Set-CustomMode
             Update-ConfigurationFilter
         })
-        [void](Set-LocTooltip $cb ("policy.$($p.Name).description"))
-        $tab.Controls.Add($cb)
+    }
+
+    $y = 35
+    foreach ($p in $script:Policies[$cat]) {
+        # The caption is the raw registry value name; only the description is
+        # localized. Choice policies show their value in the picker instead.
+        $caption = if ($p.Choices) { $p.Name } else { "$($p.Name)    =>  $($p.ApplyValue)" }
+        $width = if ($p.Choices) { 300 } else { 450 }
+        $cb = New-RowCheckBox -Parent $tab -Text $caption -Y $y -Width $width `
+            -Tag @{Policy = $p; Category = $cat} -TipKey "policy.$($p.Name).description"
         $script:CheckBoxes += $cb
         $rowControls = @($cb)
 
@@ -111,11 +78,7 @@ foreach ($cat in $script:Policies.Keys) {
             Set-ComboLabels -Combo $combo -Ids $choiceIds -LabelKeys $choiceKeys
             $script:PolicyCombos[$p.Name] = $combo
             # Preselect the id whose value matches the current ApplyValue.
-            foreach ($cid in $choiceIds) {
-                if ("$($p.Choices[$cid])" -eq "$($p.ApplyValue)") {
-                    [void](Set-PolicyChoiceId -Policy $p -ChoiceId $cid); break
-                }
-            }
+            Set-PolicyChoiceByValue -Policy $p -Value $p.ApplyValue
             $combo.Tag = $p
             # Gated: relabelling the picker for a new language clears and
             # refills Items, which would otherwise land here with a transient
@@ -134,20 +97,12 @@ foreach ($cat in $script:Policies.Keys) {
                 finally { Pop-SuppressSelectionEvents }
                 Set-CustomMode
             })
-            [void](Set-LocTooltip $combo ("policy.$($p.Name).description"))
+            Set-LocTooltip $combo ("policy.$($p.Name).description")
             $tab.Controls.Add($combo)
             $rowControls += $combo
         }
 
-        $desc = New-Object System.Windows.Forms.Label
-        $desc.Location = New-Object System.Drawing.Point(475, ($y + 2))
-        $desc.Size = New-Object System.Drawing.Size(630, (Get-PolicyDescHeight))
-        $desc.ForeColor = [System.Drawing.Color]::DimGray
-        $desc.Font = Get-BfoUiFont -Size (Get-PolicyDescFontSize)
-        [void](Set-Loc $desc ("policy.$($p.Name).description"))
-        $tab.Controls.Add($desc)
-        [void]$script:RowDescLabels.Add($desc)
-        $rowControls += $desc
+        $rowControls += New-RowDescLabel -Parent $tab -Key "policy.$($p.Name).description" -X 475 -Y ($y + 2) -Width 630
 
         $policyName = $p.Name
         $categoryId = $cat

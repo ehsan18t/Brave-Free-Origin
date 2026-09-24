@@ -3,6 +3,27 @@
 #  Dot-sourced by Brave-Free-Origin.ps1; see the load order there.
 # ============================================================================
 
+# List columns: header string key and initial width, in display order.
+$script:ScriptletColumns = @(
+    @('scriptlet.col.pick', 96), @('scriptlet.col.domain', 190), @('scriptlet.col.scriptlet', 190),
+    @('scriptlet.col.arguments', 260), @('scriptlet.col.source', 180), @('scriptlet.col.line', 55),
+    @('scriptlet.col.rawRule', 520)
+)
+
+# Runs Body against the list with its ItemChecked handler muted and painting
+# paused, for changes made by code rather than by the user.
+function Invoke-ScriptletListBulk {
+    param([scriptblock]$Body)
+    $script:SuppressScriptletStatusEvents = $true
+    $script:ScriptletList.BeginUpdate()
+    try {
+        & $Body
+    } finally {
+        $script:ScriptletList.EndUpdate()
+        $script:SuppressScriptletStatusEvents = $false
+    }
+}
+
 function Resize-ScriptletColumns {
     if (-not $script:ScriptletList) { return }
     if ($script:ScriptletList.Columns.Count -lt 7) { return }
@@ -43,27 +64,17 @@ function Update-ScriptletStatusText {
 # all written imperatively as the scan/render progresses. A language switch
 # therefore has to re-text them explicitly, in place, without re-scanning.
 function Update-ScriptletLocalizedText {
-    if ($script:ScriptletList -and $script:ScriptletList.Columns.Count -ge 7) {
-        $headerKeys = @(
-            'scriptlet.col.pick', 'scriptlet.col.domain', 'scriptlet.col.scriptlet',
-            'scriptlet.col.arguments', 'scriptlet.col.source', 'scriptlet.col.line',
-            'scriptlet.col.rawRule'
-        )
-        for ($i = 0; $i -lt $headerKeys.Count; $i++) {
-            $script:ScriptletList.Columns[$i].Text = T $headerKeys[$i]
+    if ($script:ScriptletList -and $script:ScriptletList.Columns.Count -ge $script:ScriptletColumns.Count) {
+        for ($i = 0; $i -lt $script:ScriptletColumns.Count; $i++) {
+            $script:ScriptletList.Columns[$i].Text = T $script:ScriptletColumns[$i][0]
         }
     }
     if ($script:ScriptletList -and $script:ScriptletList.Items.Count -gt 0) {
-        $script:SuppressScriptletStatusEvents = $true
-        $script:ScriptletList.BeginUpdate()
-        try {
+        Invoke-ScriptletListBulk {
             foreach ($item in $script:ScriptletList.Items) {
                 if (-not $item.Tag) { continue }
                 $item.Text = if ($item.Tag.Enabled) { T 'scriptlet.state.enabled' } else { T 'scriptlet.state.disabled' }
             }
-        } finally {
-            $script:ScriptletList.EndUpdate()
-            $script:SuppressScriptletStatusEvents = $false
         }
     }
     # Only refresh the counter line if a scan has actually produced rules;
@@ -95,6 +106,27 @@ function Set-ScriptletUiBusy {
 function Start-ScriptletFilterDelay {
     $script:ScriptletFilterTimer.Stop()
     $script:ScriptletFilterTimer.Start()
+}
+
+# Applies the search now: Enter, the Filter button and the debounce all end here.
+function Invoke-ScriptletFilterNow {
+    $script:ScriptletFilterTimer.Stop()
+    Update-ScriptletListView
+}
+
+# Runs one write to the filter lists from a button. Action returns the log line
+# for success; the list is then rescanned so it shows the files as they are now.
+# On failure the error is logged and shown under FailKey.
+function Invoke-ScriptletWrite {
+    param([scriptblock]$Action, [string]$FailLog, [string]$FailKey)
+    try {
+        $message = & $Action
+        Write-Log $message 'OK'
+        Invoke-ScriptletScan
+    } catch {
+        Write-Log "${FailLog}: $_" 'ERR'
+        Show-BfoMessage $FailKey @("$_") -TitleKey 'msg.title.scriptlet' -Icon Error
+    }
 }
 
 function Get-ScriptletRecordKey {
@@ -284,15 +316,10 @@ function Set-ScriptletVisibleChecks {
         $script:ScriptletCheckedKeys.Clear()
     }
 
-    $script:SuppressScriptletStatusEvents = $true
-    $script:ScriptletList.BeginUpdate()
-    try {
+    Invoke-ScriptletListBulk {
         foreach ($item in $script:ScriptletList.Items) {
             $item.Checked = Test-ScriptletRecordChecked -Record $item.Tag
         }
-    } finally {
-        $script:ScriptletList.EndUpdate()
-        $script:SuppressScriptletStatusEvents = $false
     }
     Update-ScriptletStatusText
 }
@@ -364,12 +391,19 @@ function Complete-ScriptletScan {
         $script:LblScriptletStatus.Text += (T 'scriptlet.scanDone' @($elapsed))
     }
     if ($script:ScriptletRules.Count -eq 0) {
-        [System.Windows.Forms.MessageBox]::Show(
-            (T 'msg.scriptlet.noRules' @($root)),
-            (T 'msg.title.scriptlet'),
-            [System.Windows.Forms.MessageBoxButtons]::OK,
-            [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+        Show-BfoMessage 'msg.scriptlet.noRules' @($root) -TitleKey 'msg.title.scriptlet'
     }
+}
+
+# Finishes the current file (read to the end, or failed): releases the reader
+# and counts the whole file as processed for the progress bar.
+function Close-ScriptletScanFile {
+    param($State)
+    if ($State.Reader) {
+        try { $State.Reader.Dispose() } catch {}
+    }
+    $State.ProcessedBytes += [int64]$State.CurrentFile.Length
+    $State.Reader = $null
 }
 
 function Step-ScriptletScan {
@@ -396,26 +430,20 @@ function Step-ScriptletScan {
                 $state.Reader = [System.IO.File]::OpenText($file.FullName)
             } catch {
                 [void]$state.Warnings.Add("Scriptlet scan failed $($file.FullName): $_")
-                $state.ProcessedBytes += [int64]$file.Length
-                $state.Reader = $null
+                Close-ScriptletScanFile $state
                 continue
             }
         }
 
+        # A read error ends this file like EOF does, after recording a warning.
+        $line = $null
         try {
             $line = $state.Reader.ReadLine()
         } catch {
             [void]$state.Warnings.Add("Scriptlet scan failed $($state.CurrentFile.FullName): $_")
-            try { $state.Reader.Dispose() } catch {}
-            $state.ProcessedBytes += [int64]$state.CurrentFile.Length
-            $state.Reader = $null
-            continue
         }
-
         if ($null -eq $line) {
-            try { $state.Reader.Dispose() } catch {}
-            $state.ProcessedBytes += [int64]$state.CurrentFile.Length
-            $state.Reader = $null
+            Close-ScriptletScanFile $state
             continue
         }
 
@@ -442,11 +470,7 @@ function Invoke-ScriptletScan {
         if ($files.Count -eq 0) {
             Set-ScriptletUiBusy $false
             if ($script:ScriptletProgress) { $script:ScriptletProgress.Value = 0 }
-            [System.Windows.Forms.MessageBox]::Show(
-                (T 'msg.scriptlet.noFiles' @($root)),
-                (T 'msg.title.scriptlet'),
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+            Show-BfoMessage 'msg.scriptlet.noFiles' @($root) -TitleKey 'msg.title.scriptlet'
             return
         }
 
@@ -485,10 +509,6 @@ function Invoke-ScriptletScan {
         $script:ScriptletRules = @()
         Update-ScriptletListView
         Write-Log "Scriptlet scan failed: $_" 'ERR'
-        [System.Windows.Forms.MessageBox]::Show(
-            (T 'msg.scriptlet.scanFailed' @("$_")),
-            (T 'msg.title.scriptlet'),
-            [System.Windows.Forms.MessageBoxButtons]::OK,
-            [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+        Show-BfoMessage 'msg.scriptlet.scanFailed' @("$_") -TitleKey 'msg.title.scriptlet' -Icon Error
     }
 }

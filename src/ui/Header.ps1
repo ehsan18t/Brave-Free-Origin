@@ -9,39 +9,14 @@ $header.Dock = 'Top'
 $header.Height = 112
 $header.BackColor = [System.Drawing.Color]::FromArgb(22, 27, 34)
 
-$titleLabel = New-Object System.Windows.Forms.Label
-[void](Set-Loc $titleLabel 'app.name')
-$titleLabel.ForeColor = [System.Drawing.Color]::White
-[void](Set-LocFont $titleLabel -Size 18 -Semibold)
-$titleLabel.Location = New-Object System.Drawing.Point(18, 10)
+$titleLabel = New-LocControl Label $header 'app.name' 18 10 -FontSize 18 -Semibold -ForeColor 'White'
 $titleLabel.AutoSize = $true
-$header.Controls.Add($titleLabel)
-
-$subLabel = New-Object System.Windows.Forms.Label
-[void](Set-Loc $subLabel 'header.subtitle')
-$subLabel.ForeColor = [System.Drawing.Color]::Gainsboro
-[void](Set-LocFont $subLabel -Size 9)
-$subLabel.Location = New-Object System.Drawing.Point(20, 43)
-$subLabel.Size = New-Object System.Drawing.Size(760, 18)
-$header.Controls.Add($subLabel)
-
-$metaLabel = New-Object System.Windows.Forms.Label
-[void](Set-Loc $metaLabel 'header.braveDetected' -FormatArgs @($braveVer))
-$metaLabel.ForeColor = [System.Drawing.Color]::LightSteelBlue
-[void](Set-LocFont $metaLabel -Size 8.5)
-$metaLabel.Location = New-Object System.Drawing.Point(20, 70)
-$metaLabel.Size = New-Object System.Drawing.Size(280, 18)
-$header.Controls.Add($metaLabel)
+[void](New-LocControl Label $header 'header.subtitle' 20 43 760 18 -FontSize 9 -ForeColor 'Gainsboro')
+[void](New-LocControl Label $header 'header.braveDetected' 20 70 280 18 -FontSize 8.5 -ForeColor 'LightSteelBlue' -FormatArgs @($braveVer))
 
 # Channel selector (multi-channel support)
 $detectedChannels = Get-DetectedChannels
-$channelLabel = New-Object System.Windows.Forms.Label
-[void](Set-Loc $channelLabel 'header.targetChannel')
-$channelLabel.ForeColor = [System.Drawing.Color]::LightSteelBlue
-[void](Set-LocFont $channelLabel -Size 8.5)
-$channelLabel.Location = New-Object System.Drawing.Point(310, 70)
-$channelLabel.Size = New-Object System.Drawing.Size(95, 18)
-$header.Controls.Add($channelLabel)
+[void](New-LocControl Label $header 'header.targetChannel' 310 70 95 18 -FontSize 8.5 -ForeColor 'LightSteelBlue')
 
 $script:ChannelCombo = New-Object System.Windows.Forms.ComboBox
 $script:ChannelCombo.Location = New-Object System.Drawing.Point(405, 67)
@@ -87,13 +62,7 @@ $script:ChannelCombo.Add_SelectedIndexChanged({
 })
 
 # ---- Language picker --------------------------------------------------------
-$lblLanguage = New-Object System.Windows.Forms.Label
-$lblLanguage.ForeColor = [System.Drawing.Color]::LightSteelBlue
-[void](Set-LocFont $lblLanguage -Size 8.5)
-$lblLanguage.Location = New-Object System.Drawing.Point(880, 10)
-$lblLanguage.Size = New-Object System.Drawing.Size(70, 18)
-[void](Set-Loc $lblLanguage 'header.language')
-$header.Controls.Add($lblLanguage)
+[void](New-LocControl Label $header 'header.language' 880 10 70 18 -FontSize 8.5 -ForeColor 'LightSteelBlue')
 
 $script:LocaleList = @(Get-AvailableLocales)
 $script:LanguageCombo = New-Object System.Windows.Forms.ComboBox
@@ -104,13 +73,8 @@ $script:LanguageCombo.FlatStyle = 'Flat'
 foreach ($loc in $script:LocaleList) { [void]$script:LanguageCombo.Items.Add($loc.Name) }
 $header.Controls.Add($script:LanguageCombo)
 
-$script:LblLocaleNote = New-Object System.Windows.Forms.Label
-$script:LblLocaleNote.ForeColor = [System.Drawing.Color]::FromArgb(255, 212, 153)
-[void](Set-LocFont $script:LblLocaleNote -Size 7.5)
-$script:LblLocaleNote.Location = New-Object System.Drawing.Point(950, 31)
-$script:LblLocaleNote.Size = New-Object System.Drawing.Size(200, 14)
-$script:LblLocaleNote.Text = ''
-$header.Controls.Add($script:LblLocaleNote)
+# Text is set by Update-LocaleNote, not bound: it depends on the locale file.
+$script:LblLocaleNote = New-LocControl Label $header '' 950 31 200 14 -FontSize 7.5 -ForeColor ([System.Drawing.Color]::FromArgb(255, 212, 153))
 
 function Update-LocaleNote {
     if (-not $script:LblLocaleNote) { return }
@@ -137,12 +101,6 @@ $script:LanguageCombo.Add_SelectedIndexChanged({
     Write-Log "$(T 'msg.language.switched' @($script:LocaleList[$i].Name))" 'OK'
 })
 
-$originNote = New-Object System.Windows.Forms.Label
-[void](Set-Loc $originNote 'header.originNote')
-$originNote.ForeColor = [System.Drawing.Color]::FromArgb(255, 212, 153)
-[void](Set-LocFont $originNote -Size 8.5)
-$originNote.Location = New-Object System.Drawing.Point(20, 88)
-$originNote.Size = New-Object System.Drawing.Size(950, 18)
-$header.Controls.Add($originNote)
+[void](New-LocControl Label $header 'header.originNote' 20 88 950 18 -FontSize 8.5 -ForeColor ([System.Drawing.Color]::FromArgb(255, 212, 153)))
 
 $form.Controls.Add($header)

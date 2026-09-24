@@ -3,6 +3,28 @@
 #  Dot-sourced by Brave-Free-Origin.ps1; see the load order there.
 # ============================================================================
 
+# ---- Config import helpers --------------------------------------------------
+# A config section's id: the schema 2 id when present, otherwise the pre-1.12
+# English label mapped through its legacy table, otherwise nothing.
+function Resolve-ConfigId {
+    param($Id, $Legacy, [hashtable]$Map)
+    if ($Id) { return "$Id" }
+    if ($Legacy -and $Map.ContainsKey("$Legacy")) { return $Map["$Legacy"] }
+    return $null
+}
+
+# Applies a { "name": true/false } config section to checkboxes. NameOf gets a
+# checkbox and returns its name; names the section omits are left alone.
+function Import-CheckMap {
+    param($CheckBoxes, $Map, [scriptblock]$NameOf)
+    if (-not $Map) { return }
+    $names = @($Map.PSObject.Properties.Name)
+    foreach ($cb in $CheckBoxes) {
+        $name = & $NameOf $cb
+        if ($names -contains $name) { $cb.Checked = [bool]$Map.$name }
+    }
+}
+
 # ---- Utility buttons --------------------------------------------------------
 $utilityPanel = New-Object System.Windows.Forms.Panel
 $utilityPanel.Location = New-Object System.Drawing.Point(10, 716)
@@ -11,11 +33,7 @@ $utilityPanel.Anchor = 'Left, Right, Bottom'
 $form.Controls.Add($utilityPanel)
 
 # Export config to JSON
-$btnExport = New-Object System.Windows.Forms.Button
-[void](Set-Loc $btnExport 'util.export')
-$btnExport.Size = New-Object System.Drawing.Size(110, 30)
-$btnExport.Location = New-Object System.Drawing.Point(420, 5)
-$btnExport.Add_Click({
+[void](New-LocControl Button $utilityPanel 'util.export' 420 5 110 30 -OnClick {
     $sfd = New-Object System.Windows.Forms.SaveFileDialog
     $sfd.Filter = '{0} (*.json)|*.json' -f (T 'dialog.filter.config')
     $sfd.FileName = "brave-free-origin-config-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
@@ -63,14 +81,9 @@ $btnExport.Add_Click({
     $cfg | ConvertTo-Json -Depth 5 | Set-Content -Path $sfd.FileName -Encoding UTF8
     Write-Log "Config exported: $($sfd.FileName)" 'OK'
 })
-$utilityPanel.Controls.Add($btnExport)
 
 # Import config from JSON
-$btnImport = New-Object System.Windows.Forms.Button
-[void](Set-Loc $btnImport 'util.import')
-$btnImport.Size = New-Object System.Drawing.Size(110, 30)
-$btnImport.Location = New-Object System.Drawing.Point(535, 5)
-$btnImport.Add_Click({
+[void](New-LocControl Button $utilityPanel 'util.import' 535 5 110 30 -OnClick {
     $ofd = New-Object System.Windows.Forms.OpenFileDialog
     $ofd.Filter = '{0} (*.json)|*.json' -f (T 'dialog.filter.config')
     $ofd.InitialDirectory = Get-BackupDir
@@ -78,44 +91,23 @@ $btnImport.Add_Click({
     try {
         $cfg = Get-Content $ofd.FileName -Raw | ConvertFrom-Json
     } catch {
-        [System.Windows.Forms.MessageBox]::Show((T 'msg.config.badJson' @("$_")), (T 'msg.title.importError'), 'OK', 'Error') | Out-Null
+        Show-BfoMessage 'msg.config.badJson' @("$_") -TitleKey 'msg.title.importError' -Icon Error
         return
     }
     Push-SuppressSelectionEvents
     try {
-        if ($cfg.policies) {
-            foreach ($cb in $script:CheckBoxes) {
-                $name = $cb.Tag.Policy.Name
-                if ($cfg.policies.PSObject.Properties.Name -contains $name) { $cb.Checked = [bool]$cfg.policies.$name }
-            }
-        }
+        Import-CheckMap -CheckBoxes $script:CheckBoxes -Map $cfg.policies -NameOf { param($cb) $cb.Tag.Policy.Name }
         if ($cfg.policyValues) {
             # Restore the picked value for choice policies (e.g. hardware accel).
+            $valueNames = @($cfg.policyValues.PSObject.Properties.Name)
             foreach ($cb in $script:CheckBoxes) {
                 $p = $cb.Tag.Policy
-                if (-not $p.Choices) { continue }
-                if ($cfg.policyValues.PSObject.Properties.Name -notcontains $p.Name) { continue }
-                $wanted = "$($cfg.policyValues.$($p.Name))"
-                foreach ($cid in $p.Choices.Keys) {
-                    if ("$($p.Choices[$cid])" -eq $wanted) {
-                        [void](Set-PolicyChoiceId -Policy $p -ChoiceId $cid)
-                        break
-                    }
-                }
+                if (-not $p.Choices -or $valueNames -notcontains $p.Name) { continue }
+                Set-PolicyChoiceByValue -Policy $p -Value $cfg.policyValues.$($p.Name)
             }
         }
-        if ($cfg.tasks) {
-            foreach ($cb in $script:TaskCheckBoxes) {
-                $name = $cb.Tag.Name
-                if ($cfg.tasks.PSObject.Properties.Name -contains $name) { $cb.Checked = [bool]$cfg.tasks.$name }
-            }
-        }
-        if ($cfg.services) {
-            foreach ($cb in $script:ServiceCheckBoxes) {
-                $name = $cb.Tag.Name
-                if ($cfg.services.PSObject.Properties.Name -contains $name) { $cb.Checked = [bool]$cfg.services.$name }
-            }
-        }
+        Import-CheckMap -CheckBoxes $script:TaskCheckBoxes -Map $cfg.tasks -NameOf { param($cb) $cb.Tag.Name }
+        Import-CheckMap -CheckBoxes $script:ServiceCheckBoxes -Map $cfg.services -NameOf { param($cb) $cb.Tag.Name }
         if ($cfg.hosts) {
             # Accept both schema 2 ids and the pre-1.12 English display names.
             $hostsById = @{}
@@ -130,28 +122,19 @@ $btnImport.Add_Click({
         }
         if ($cfg.search) {
             $script:ChkSearchOverride.Checked = [bool]$cfg.search.enabled
-            $engineId = if ($cfg.search.engineId) { "$($cfg.search.engineId)" }
-                        elseif ($cfg.search.engine -and $script:LegacySearchEngineIds.ContainsKey("$($cfg.search.engine)")) {
-                            $script:LegacySearchEngineIds["$($cfg.search.engine)"]
-                        } else { $null }
+            $engineId = Resolve-ConfigId -Id $cfg.search.engineId -Legacy $cfg.search.engine -Map $script:LegacySearchEngineIds
             if ($engineId) { [void](Set-ComboId -Combo $script:CmbSearchEngine -Ids $script:SearchEngineIds -Id $engineId) }
             if ($cfg.search.customUrl) { $script:TxtCustomSearchUrl.Text = $cfg.search.customUrl }
         }
         if ($cfg.ntp) {
             $script:ChkNtpOverride.Checked = [bool]$cfg.ntp.enabled
-            $destId = if ($cfg.ntp.destinationId) { "$($cfg.ntp.destinationId)" }
-                      elseif ($cfg.ntp.destination -and $script:LegacyDestinationIds.ContainsKey("$($cfg.ntp.destination)")) {
-                          $script:LegacyDestinationIds["$($cfg.ntp.destination)"]
-                      } else { $null }
+            $destId = Resolve-ConfigId -Id $cfg.ntp.destinationId -Legacy $cfg.ntp.destination -Map $script:LegacyDestinationIds
             if ($destId) { [void](Set-ComboId -Combo $script:CmbNtpDest -Ids $script:DestinationIds -Id $destId) }
             if ($cfg.ntp.customUrl) { $script:TxtNtpCustomUrl.Text = $cfg.ntp.customUrl }
         }
         if ($cfg.startup) {
             $script:ChkStartupOverride.Checked = [bool]$cfg.startup.enabled
-            $modeId = if ($cfg.startup.modeId) { "$($cfg.startup.modeId)" }
-                      elseif ($cfg.startup.mode -and $script:LegacyStartupModeIds.ContainsKey("$($cfg.startup.mode)")) {
-                          $script:LegacyStartupModeIds["$($cfg.startup.mode)"]
-                      } else { $null }
+            $modeId = Resolve-ConfigId -Id $cfg.startup.modeId -Legacy $cfg.startup.mode -Map $script:LegacyStartupModeIds
             if ($modeId) { [void](Set-ComboId -Combo $script:CmbStartupMode -Ids $script:StartupModeIds -Id $modeId) }
             if ($cfg.startup.urls) { $script:TxtStartupUrl.Text = $cfg.startup.urls }
         }
@@ -164,18 +147,11 @@ $btnImport.Add_Click({
     $schema = if ($cfg.schemaVersion) { $cfg.schemaVersion } else { 1 }
     Write-Log "Config imported from $($ofd.FileName) (schema $schema, app $($cfg.appVersion)$(if (-not $cfg.appVersion) { $cfg.version }))" 'OK'
     Update-ConfigurationFilter
-    [System.Windows.Forms.MessageBox]::Show(
-        (T 'msg.config.imported'),
-        (T 'msg.title.imported'), 'OK', 'Information') | Out-Null
+    Show-BfoMessage 'msg.config.imported' -TitleKey 'msg.title.imported'
 })
-$utilityPanel.Controls.Add($btnImport)
 
 # Verify - read registry, compare to UI selections
-$btnVerify = New-Object System.Windows.Forms.Button
-[void](Set-Loc $btnVerify 'util.verify')
-$btnVerify.Size = New-Object System.Drawing.Size(80, 30)
-$btnVerify.Location = New-Object System.Drawing.Point(650, 5)
-$btnVerify.Add_Click({
+[void](New-LocControl Button $utilityPanel 'util.verify' 650 5 80 30 -OnClick {
     $report = New-Object System.Text.StringBuilder
     foreach ($channel in $script:TargetChannels) {
         $path = $script:Channels[$channel].Path
@@ -243,13 +219,9 @@ $btnVerify.Add_Click({
 
     Show-TextReport -Title (T 'report.verifyTitle') -Text ($report.ToString()) -DefaultFileName "brave-free-origin-verify-$(Get-Date -Format 'yyyyMMdd-HHmmss').txt"
 })
-$utilityPanel.Controls.Add($btnVerify)
 
-$btnLoad = New-Object System.Windows.Forms.Button
-[void](Set-Loc $btnLoad 'util.loadState')
-$btnLoad.Size = New-Object System.Drawing.Size(145, 30)
-$btnLoad.Location = New-Object System.Drawing.Point(0, 5)
-$btnLoad.Add_Click({
+# Load current state. Also clicked once at startup (see Brave-Free-Origin.ps1).
+$btnLoad = New-LocControl Button $utilityPanel 'util.loadState' 0 5 145 30 -OnClick {
     Push-SuppressSelectionEvents
     try {
         # Read from the FIRST target channel (loading is single-source by design)
@@ -260,29 +232,18 @@ $btnLoad.Add_Click({
             if ($p.Choices) {
                 # A choice policy counts as "on" whenever a value is present; point
                 # the picker at whatever the registry actually holds.
-                if ($null -ne $cur) {
-                    foreach ($cid in $p.Choices.Keys) {
-                        if ("$($p.Choices[$cid])" -eq "$cur") {
-                            [void](Set-PolicyChoiceId -Policy $p -ChoiceId $cid)
-                            break
-                        }
-                    }
-                    $cb.Checked = $true
-                } else {
-                    $cb.Checked = $false
-                }
+                if ($null -ne $cur) { Set-PolicyChoiceByValue -Policy $p -Value $cur }
+                $cb.Checked = ($null -ne $cur)
             } else {
                 $cb.Checked = ($null -ne $cur -and "$cur" -eq "$($p.ApplyValue)")
             }
         }
         foreach ($cb in $script:TaskCheckBoxes) {
-            $t = $cb.Tag
-            $task = Get-ScheduledTask -TaskName $t.Name -ErrorAction SilentlyContinue
+            $task = Get-ScheduledTask -TaskName $cb.Tag.Name -ErrorAction SilentlyContinue
             $cb.Checked = ($task -and $task.State -eq 'Disabled')
         }
         foreach ($cb in $script:ServiceCheckBoxes) {
-            $s = $cb.Tag
-            $svc = Get-Service -Name $s.Name -ErrorAction SilentlyContinue
+            $svc = Get-Service -Name $cb.Tag.Name -ErrorAction SilentlyContinue
             $cb.Checked = ($svc -and $svc.StartType -eq 'Disabled')
         }
         Sync-HostsCheckBoxes -Current @(Get-HostsCurrentDomains)
@@ -330,31 +291,10 @@ $btnLoad.Add_Click({
     Update-SelectionSummary
     Update-ConfigurationFilter
     Write-Log 'Loaded current system state.'
+}
+
+[void](New-LocControl Button $utilityPanel 'util.openPolicy' 155 5 150 30 -OnClick {
+    if (-not (Open-BraveUrl 'brave://policy')) { Show-BfoMessage 'msg.braveMissing' -TitleKey 'msg.title.info' -Icon None }
 })
-$utilityPanel.Controls.Add($btnLoad)
-
-$btnOpenBrave = New-Object System.Windows.Forms.Button
-[void](Set-Loc $btnOpenBrave 'util.openPolicy')
-$btnOpenBrave.Size = New-Object System.Drawing.Size(150, 30)
-$btnOpenBrave.Location = New-Object System.Drawing.Point(155, 5)
-$btnOpenBrave.Add_Click({
-    $exe = Test-BraveInstalled
-    if ($exe) { Start-Process $exe 'brave://policy' }
-    else { [System.Windows.Forms.MessageBox]::Show((T 'msg.braveMissing'), (T 'msg.title.info')) | Out-Null }
-})
-$utilityPanel.Controls.Add($btnOpenBrave)
-
-$btnClose = New-Object System.Windows.Forms.Button
-[void](Set-Loc $btnClose 'util.close')
-$btnClose.Size = New-Object System.Drawing.Size(95, 30)
-$btnClose.Location = New-Object System.Drawing.Point(315, 5)
-$btnClose.Add_Click({ $form.Close() })
-$utilityPanel.Controls.Add($btnClose)
-
-$flowLabel = New-Object System.Windows.Forms.Label
-[void](Set-Loc $flowLabel 'util.flow')
-[void](Set-LocFont $flowLabel -Size 9)
-$flowLabel.Location = New-Object System.Drawing.Point(740, 11)
-$flowLabel.Size = New-Object System.Drawing.Size(400, 18)
-$flowLabel.ForeColor = [System.Drawing.Color]::DimGray
-$utilityPanel.Controls.Add($flowLabel)
+[void](New-LocControl Button $utilityPanel 'util.close' 315 5 95 30 -OnClick { $form.Close() })
+[void](New-LocControl Label $utilityPanel 'util.flow' 740 11 400 18 -FontSize 9 -ForeColor 'DimGray')

@@ -155,25 +155,35 @@ function Backup-ScriptletFile {
 
 function Test-ScriptletAdvancedWriteAllowed {
     if (-not $script:ChkScriptletAdvanced -or -not $script:ChkScriptletAdvanced.Checked) {
-        [System.Windows.Forms.MessageBox]::Show(
-            (T 'msg.scriptlet.locked'),
-            (T 'msg.title.scriptlet'),
-            [System.Windows.Forms.MessageBoxButtons]::OK,
-            [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+        Show-BfoMessage 'msg.scriptlet.locked' -TitleKey 'msg.title.scriptlet' -Icon Warning
         return $false
     }
 
+    # Brave may rewrite or cache the lists while running; editing them then is
+    # allowed, but only after the user confirms.
     $braveProcesses = @(Get-Process -Name brave -ErrorAction SilentlyContinue)
     if ($braveProcesses.Count -gt 0) {
-        $ans = [System.Windows.Forms.MessageBox]::Show(
-            (T 'msg.scriptlet.braveRunning' @($braveProcesses.Count)),
-            (T 'msg.title.scriptlet'),
-            [System.Windows.Forms.MessageBoxButtons]::YesNo,
-            [System.Windows.Forms.MessageBoxIcon]::Warning)
-        if ($ans -ne 'Yes') { return $false }
+        return (Show-BfoMessage 'msg.scriptlet.braveRunning' @($braveProcesses.Count) -TitleKey 'msg.title.scriptlet' -Icon Warning -YesNo)
     }
 
     return $true
+}
+
+# Enables or disables the rule on one line of a list file, in place: disabling
+# comments it out behind the BFO marker, enabling restores the original rule.
+# Returns $true when the line changed.
+function Set-ScriptletLine {
+    param([string[]]$Lines, [int]$Index, [bool]$Enable)
+    $disabledRule = Get-BfoDisabledScriptletRule -Line $Lines[$Index]
+    if ($Enable -and $disabledRule) {
+        $Lines[$Index] = $disabledRule
+        return $true
+    }
+    if (-not $Enable -and -not $disabledRule) {
+        $Lines[$Index] = "$($script:ScriptletDisablePrefix)$(Get-ScriptletRuleFromLine -Line $Lines[$Index])"
+        return $true
+    }
+    return $false
 }
 
 function Set-ScriptletRuleState {
@@ -194,36 +204,21 @@ function Set-ScriptletRuleState {
         $lines = [System.IO.File]::ReadAllLines($file)
 
         if ($AffectDuplicates) {
+            # Every line carrying one of the selected rules, wherever it is.
             $wanted = @{}
             foreach ($record in $group.Group) { $wanted[$record.Rule] = $true }
             for ($i = 0; $i -lt $lines.Length; $i++) {
                 $original = Get-ScriptletRuleFromLine -Line $lines[$i]
                 if (-not $original -or -not $wanted.ContainsKey($original)) { continue }
-
-                $disabledRule = Get-BfoDisabledScriptletRule -Line $lines[$i]
-                if ($Enable -and $disabledRule) {
-                    $lines[$i] = $disabledRule
-                    $changed++
-                } elseif (-not $Enable -and -not $disabledRule) {
-                    $lines[$i] = "$($script:ScriptletDisablePrefix)$original"
-                    $changed++
-                }
+                if (Set-ScriptletLine -Lines $lines -Index $i -Enable $Enable) { $changed++ }
             }
         } else {
+            # Only the exact lines selected, and only if they still hold that rule.
             foreach ($record in $group.Group) {
                 $idx = [int]$record.LineNumber - 1
                 if ($idx -lt 0 -or $idx -ge $lines.Length) { continue }
-                $original = Get-ScriptletRuleFromLine -Line $lines[$idx]
-                if ($original -ne $record.Rule) { continue }
-
-                $disabledRule = Get-BfoDisabledScriptletRule -Line $lines[$idx]
-                if ($Enable -and $disabledRule) {
-                    $lines[$idx] = $disabledRule
-                    $changed++
-                } elseif (-not $Enable -and -not $disabledRule) {
-                    $lines[$idx] = "$($script:ScriptletDisablePrefix)$original"
-                    $changed++
-                }
+                if ((Get-ScriptletRuleFromLine -Line $lines[$idx]) -ne $record.Rule) { continue }
+                if (Set-ScriptletLine -Lines $lines -Index $idx -Enable $Enable) { $changed++ }
             }
         }
 
@@ -299,11 +294,12 @@ function Import-ScriptletPreferencesAndReapply {
             $original = Get-ScriptletRuleFromLine -Line $lines[$i]
             if (-not $original -or -not $wanted.ContainsKey($original)) { continue }
             if (Get-BfoDisabledScriptletRule -Line $lines[$i]) { continue }
+            # Backed up lazily: files with nothing to disable are never touched.
             if (-not $fileChanged) {
                 [void](Backup-ScriptletFile -File $file.FullName)
                 $fileChanged = $true
             }
-            $lines[$i] = "$($script:ScriptletDisablePrefix)$original"
+            [void](Set-ScriptletLine -Lines $lines -Index $i -Enable $false)
             $changed++
         }
         if ($fileChanged) {

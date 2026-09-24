@@ -10,57 +10,27 @@ $actionPanel.Size = New-Object System.Drawing.Size(1145, 44)
 $actionPanel.Anchor = 'Left, Right, Bottom'
 $form.Controls.Add($actionPanel)
 
-$chkBackup = New-Object System.Windows.Forms.CheckBox
-[void](Set-Loc $chkBackup 'action.backup')
+# Read by the Preview report as well as by Apply and Full restore.
+$chkBackup = New-LocControl CheckBox $actionPanel 'action.backup' 0 12 270 20
 $chkBackup.Checked = $true
-$chkBackup.Location = New-Object System.Drawing.Point(0, 12)
-$chkBackup.Size = New-Object System.Drawing.Size(270, 20)
-$actionPanel.Controls.Add($chkBackup)
 
-$btnPreview = New-Object System.Windows.Forms.Button
-[void](Set-Loc $btnPreview 'action.preview')
-$btnPreview.Size = New-Object System.Drawing.Size(140, 34)
-$btnPreview.Location = New-Object System.Drawing.Point(280, 4)
-$btnPreview.Add_Click({
+[void](New-LocControl Button $actionPanel 'action.preview' 280 4 140 34 -OnClick {
     Show-TextReport -Title (T 'report.previewTitle') -Text (New-ApplyPlanReport) -DefaultFileName "brave-free-origin-apply-preview-$(Get-Date -Format 'yyyyMMdd-HHmmss').txt"
 })
-$actionPanel.Controls.Add($btnPreview)
 
-$btnApply = New-Object System.Windows.Forms.Button
-[void](Set-Loc $btnApply 'action.apply')
-$btnApply.Size = New-Object System.Drawing.Size(150, 34)
-$btnApply.Location = New-Object System.Drawing.Point(430, 4)
-$btnApply.BackColor = [System.Drawing.Color]::FromArgb(37, 99, 63)
-$btnApply.ForeColor = [System.Drawing.Color]::White
-[void](Set-LocFont $btnApply -Size 9 -Semibold)
-$btnApply.Add_Click({
+[void](New-LocControl Button $actionPanel 'action.apply' 430 4 150 34 -FontSize 9 -Semibold `
+    -BackColor ([System.Drawing.Color]::FromArgb(37, 99, 63)) -ForeColor 'White' -OnClick {
     $result = Invoke-Apply -Backup $chkBackup.Checked
-    [System.Windows.Forms.MessageBox]::Show(
-        (T 'msg.apply.done' @((Get-PresetName $script:ActiveProfile), $result.Applied, $result.Cleared)),
-        (T 'msg.title.app'),
-        [System.Windows.Forms.MessageBoxButtons]::OK,
-        [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+    Show-BfoMessage 'msg.apply.done' @((Get-PresetName $script:ActiveProfile), $result.Applied, $result.Cleared)
 })
-$actionPanel.Controls.Add($btnApply)
 
-$btnRemoveAll = New-Object System.Windows.Forms.Button
-[void](Set-Loc $btnRemoveAll 'action.fullRestore')
-$btnRemoveAll.Size = New-Object System.Drawing.Size(170, 34)
-$btnRemoveAll.Location = New-Object System.Drawing.Point(590, 4)
-$btnRemoveAll.BackColor = [System.Drawing.Color]::FromArgb(150, 60, 60)
-$btnRemoveAll.ForeColor = [System.Drawing.Color]::White
-$btnRemoveAll.Add_Click({
+[void](New-LocControl Button $actionPanel 'action.fullRestore' 590 4 170 34 `
+    -BackColor ([System.Drawing.Color]::FromArgb(150, 60, 60)) -ForeColor 'White' -OnClick {
     $targets = $script:TargetChannels -join ', '
-    $ans = [System.Windows.Forms.MessageBox]::Show(
-        (T 'msg.restore.confirm' @($targets)),
-        (T 'msg.title.fullRestore'),
-        [System.Windows.Forms.MessageBoxButtons]::YesNo,
-        [System.Windows.Forms.MessageBoxIcon]::Warning)
-    if ($ans -ne 'Yes') { return }
+    if (-not (Show-BfoMessage 'msg.restore.confirm' @($targets) -TitleKey 'msg.title.fullRestore' -Icon Warning -YesNo)) { return }
     Invoke-FullRestore -Backup $chkBackup.Checked
-    [System.Windows.Forms.MessageBox]::Show((T 'msg.restore.done'), (T 'msg.title.app'), 'OK', 'Information') | Out-Null
+    Show-BfoMessage 'msg.restore.done'
 })
-$actionPanel.Controls.Add($btnRemoveAll)
 
 # ---- Log box ----------------------------------------------------------------
 $script:LogBox = New-Object System.Windows.Forms.TextBox

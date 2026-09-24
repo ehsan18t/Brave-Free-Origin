@@ -183,15 +183,10 @@ function Get-LocaleScriptTag {
     if ($parts.Count -eq 0) { return $null }
     if ($parts[0].ToLowerInvariant() -ne 'zh') { return $null }
     for ($i = 1; $i -lt $parts.Count; $i++) {
-        switch ($parts[$i].ToLowerInvariant()) {
-            'hans' { return 'Hans' }
-            'hant' { return 'Hant' }
-            'cn'   { return 'Hans' }
-            'sg'   { return 'Hans' }
-            'my'   { return 'Hans' }
-            'tw'   { return 'Hant' }
-            'hk'   { return 'Hant' }
-            'mo'   { return 'Hant' }
+        # Script subtags first, then the regions that imply one (case-insensitive).
+        switch -Regex ($parts[$i]) {
+            '^(hans|cn|sg|my)$' { return 'Hans' }
+            '^(hant|tw|hk|mo)$' { return 'Hant' }
         }
     }
     # Bare 'zh' carries no script information at all. Simplified is both the

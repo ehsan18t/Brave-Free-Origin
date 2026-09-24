@@ -172,19 +172,32 @@ function Set-ModeButtonRow {
 # ---- Fonts / metrics --------------------------------------------------------
 # Segoe UI has no CJK coverage and there is no "Microsoft YaHei UI Semibold"
 # family, so bold has to be requested as a style rather than a family name.
+# A missing family does not throw: GDI+ silently substitutes Microsoft Sans
+# Serif. So the only way to know a font is installed is to ask for it and check
+# which family came back.
+function New-InstalledFont {
+    param([string]$Family, [single]$Size, [System.Drawing.FontStyle]$Style)
+    $font = New-Object System.Drawing.Font($Family, $Size, $Style)
+    if ($font.Name -eq $Family) { return $font }
+    $font.Dispose()
+    return $null
+}
+
 function Get-BfoUiFont {
     param([single]$Size = 9, [switch]$Semibold)
+    $style = if ($Semibold) { [System.Drawing.FontStyle]::Bold } else { [System.Drawing.FontStyle]::Regular }
     if ($script:CurrentLocale -like 'zh-*') {
         foreach ($family in @('Microsoft YaHei UI', 'Microsoft YaHei')) {
-            try {
-                $style = if ($Semibold) { [System.Drawing.FontStyle]::Bold } else { [System.Drawing.FontStyle]::Regular }
-                return New-Object System.Drawing.Font($family, $Size, $style)
-            } catch { }
+            $font = New-InstalledFont -Family $family -Size $Size -Style $style
+            if ($font) { return $font }
         }
     }
-    $fallback = if ($Semibold) { 'Segoe UI Semibold' } else { 'Segoe UI' }
-    try { return New-Object System.Drawing.Font($fallback, $Size) }
-    catch { return New-Object System.Drawing.Font('Segoe UI', $Size) }
+    if ($Semibold) {
+        $font = New-InstalledFont -Family 'Segoe UI Semibold' -Size $Size -Style ([System.Drawing.FontStyle]::Regular)
+        if ($font) { return $font }
+    }
+    # Last resort, and the bold stand-in when Segoe UI Semibold is missing.
+    return New-Object System.Drawing.Font('Segoe UI', $Size, $style)
 }
 
 # CJK needs more vertical room at the same point size.

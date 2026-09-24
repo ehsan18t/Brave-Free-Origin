@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-    Regenerates locales\en-US.json from the English catalog embedded in
-    Brave-Free-Origin.ps1.
+    Regenerates locales\en-US.json from the English catalog in
+    src\strings\en-US.ps1.
 
 .DESCRIPTION
     The embedded catalog is the single runtime source of truth. en-US.json is
@@ -9,8 +9,9 @@
     Run this after adding or changing any Add-Strings entry, then commit the
     result so translators can diff it.
 
-    The script is parsed, never executed - Brave-Free-Origin.ps1 self-elevates
-    and opens a GUI, so dot-sourcing it is not an option.
+    The catalog is parsed, never executed - it only makes sense inside the app,
+    which self-elevates and opens a GUI. The app version is read from
+    Brave-Free-Origin.ps1 the same way.
 
     Output is byte-for-byte deterministic: keys are sorted, indentation is
     fixed at two spaces, line endings are LF and there is no BOM. The JSON is
@@ -32,6 +33,7 @@ param(
     # default of (Join-Path $PSScriptRoot ...) makes the script unusable
     # without explicit paths. Defaults are resolved in the body instead.
     [string]$ScriptPath,
+    [string]$CatalogPath,
     [string]$OutputPath,
     [string]$AppVersion
 )
@@ -39,7 +41,8 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-if (-not $ScriptPath) { $ScriptPath = Join-Path $repoRoot 'Brave-Free-Origin.ps1' }
+if (-not $ScriptPath)  { $ScriptPath  = Join-Path $repoRoot 'Brave-Free-Origin.ps1' }
+if (-not $CatalogPath) { $CatalogPath = Join-Path $repoRoot 'src\strings\en-US.ps1' }
 if (-not $OutputPath) { $OutputPath = Join-Path $repoRoot 'locales\en-US.json' }
 
 function Get-EmbeddedCatalog {
@@ -139,7 +142,7 @@ function ConvertTo-JsonValue {
 }
 
 # ---- run --------------------------------------------------------------------
-$catalog = Get-EmbeddedCatalog -Path $ScriptPath
+$catalog = Get-EmbeddedCatalog -Path $CatalogPath
 if ($catalog.Count -eq 0) { throw 'No Add-Strings blocks found - catalog extraction failed.' }
 if (-not $AppVersion) { $AppVersion = Get-AppVersion -Path $ScriptPath }
 
@@ -162,7 +165,7 @@ $doc = [ordered]@{
         translators = @()
         reviewed    = $true
         generated   = $true
-        note        = 'Reference only. The app never loads this file - the English catalog is embedded in Brave-Free-Origin.ps1. Regenerate with tools/Export-EnglishLocale.ps1.'
+        note        = 'Reference only. The app never loads this file - the English catalog is src/strings/en-US.ps1. Regenerate with tools/Export-EnglishLocale.ps1.'
     }
     strings = $strings
 }

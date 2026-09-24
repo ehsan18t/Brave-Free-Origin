@@ -1,0 +1,114 @@
+# ============================================================================
+#  Hosts file blocklist: sentinel block management and its preview report.
+#  Dot-sourced by Brave-Free-Origin.ps1; see the load order there.
+# ============================================================================
+
+$script:HostsSentinelStart = '# === Brave-Free-Origin START - managed block, do not edit between sentinels ==='
+$script:HostsSentinelEnd   = '# === Brave-Free-Origin END ==='
+$script:HostsFile = "$env:WINDIR\System32\drivers\etc\hosts"
+
+# ---- Hosts file helpers (v1.5) ----------------------------------------------
+function Backup-HostsFile {
+    if (-not (Test-Path $script:HostsFile)) { return $null }
+    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $dir = Join-Path $env:USERPROFILE 'Documents\Brave-Free-Origin-Backups'
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
+    $file = Join-Path $dir "hosts-backup-$stamp.bak"
+    Copy-Item $script:HostsFile $file -Force
+    Write-Log "Hosts backup saved: $file" 'OK'
+    return $file
+}
+
+function Get-HostsCurrentDomains {
+    if (-not (Test-Path $script:HostsFile)) { return @() }
+    $lines = Get-Content $script:HostsFile -ErrorAction SilentlyContinue
+    $inBlock = $false
+    $domains = @()
+    foreach ($line in $lines) {
+        if ($line -eq $script:HostsSentinelStart) { $inBlock = $true; continue }
+        if ($line -eq $script:HostsSentinelEnd)   { $inBlock = $false; continue }
+        if ($inBlock -and $line -match '^\s*0\.0\.0\.0\s+(\S+)') {
+            $domains += $Matches[1]
+        }
+    }
+    return $domains
+}
+
+function Set-HostsBlockDomains {
+    param([string[]]$Domains)
+    [void](Backup-HostsFile)
+
+    # Read all lines, strip out our existing sentinel block (if any)
+    $lines = if (Test-Path $script:HostsFile) { Get-Content $script:HostsFile } else { @() }
+    $kept = New-Object System.Collections.ArrayList
+    $skipping = $false
+    foreach ($line in $lines) {
+        if ($line -eq $script:HostsSentinelStart) { $skipping = $true; continue }
+        if ($line -eq $script:HostsSentinelEnd)   { $skipping = $false; continue }
+        if (-not $skipping) { [void]$kept.Add($line) }
+    }
+
+    # Trim trailing blank lines from existing content for tidiness
+    while ($kept.Count -gt 0 -and [string]::IsNullOrWhiteSpace($kept[$kept.Count - 1])) {
+        $kept.RemoveAt($kept.Count - 1)
+    }
+
+    if ($Domains -and $Domains.Count -gt 0) {
+        [void]$kept.Add('')
+        [void]$kept.Add($script:HostsSentinelStart)
+        [void]$kept.Add("# Generated $(Get-Date -Format 'yyyy-MM-dd HH:mm') by Brave Free Origin. Remove via the GUI.")
+        foreach ($d in ($Domains | Sort-Object -Unique)) {
+            [void]$kept.Add("0.0.0.0 $d")
+        }
+        [void]$kept.Add($script:HostsSentinelEnd)
+    }
+
+    # ASCII encoding - matches what Windows expects for hosts. Some AVs flag UTF-16 hosts.
+    Set-Content -Path $script:HostsFile -Value $kept -Encoding ASCII -Force
+
+    # Flush DNS so the change takes effect immediately for new connections
+    & ipconfig.exe /flushdns | Out-Null
+    Write-Log "Hosts block written: $($Domains.Count) domain(s). DNS cache flushed." 'OK'
+}
+
+function Clear-HostsBlock {
+    Set-HostsBlockDomains -Domains @()
+    Write-Log 'Hosts sentinel block removed.' 'OK'
+}
+
+function Get-SelectedHostsDomains {
+    $domains = @()
+    if ($script:HostsCheckBoxes) {
+        foreach ($cb in $script:HostsCheckBoxes) {
+            if ($cb.Checked) { $domains += $cb.Tag.Domains }
+        }
+    }
+    return @($domains | Sort-Object -Unique)
+}
+
+function New-HostsPlanReport {
+    $desired = @(Get-SelectedHostsDomains)
+    $current = @(Get-HostsCurrentDomains)
+    $toAdd = @($desired | Where-Object { $current -notcontains $_ })
+    $toKeep = @($desired | Where-Object { $current -contains $_ })
+    $toRemove = @($current | Where-Object { $desired -notcontains $_ })
+
+    $report = New-Object System.Text.StringBuilder
+    [void]$report.AppendLine('Brave Free Origin hosts preview')
+    [void]$report.AppendLine("Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')")
+    [void]$report.AppendLine("File: $($script:HostsFile)")
+    [void]$report.AppendLine('')
+    [void]$report.AppendLine("Selected groups: $(@($script:HostsCheckBoxes | Where-Object { $_.Checked }).Count)")
+    [void]$report.AppendLine("Current managed domains: $($current.Count)")
+    [void]$report.AppendLine("Desired managed domains: $($desired.Count)")
+    [void]$report.AppendLine('')
+    [void]$report.AppendLine("Add: $($toAdd.Count)")
+    foreach ($d in $toAdd) { [void]$report.AppendLine("  + $d") }
+    [void]$report.AppendLine("Keep: $($toKeep.Count)")
+    foreach ($d in $toKeep) { [void]$report.AppendLine("  = $d") }
+    [void]$report.AppendLine("Remove from managed block: $($toRemove.Count)")
+    foreach ($d in $toRemove) { [void]$report.AppendLine("  - $d") }
+    [void]$report.AppendLine('')
+    [void]$report.AppendLine('No other hosts entries are touched. The GUI only replaces the Brave-Free-Origin sentinel block.')
+    return $report.ToString()
+}

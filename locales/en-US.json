@@ -7,7 +7,7 @@
     "translators": [],
     "reviewed": true,
     "generated": true,
-    "note": "Reference only. The app never loads this file - the English catalog is embedded in Brave-Free-Origin.ps1. Regenerate with tools/Export-EnglishLocale.ps1."
+    "note": "Reference only. The app never loads this file - the English catalog is src/strings/en-US.ps1. Regenerate with tools/Export-EnglishLocale.ps1."
   },
   "strings": {
     "action.apply": "Apply to Brave",

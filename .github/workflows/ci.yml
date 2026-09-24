@@ -19,17 +19,19 @@ jobs:
       # This is the production runtime: Brave-Free-Origin.bat launches
       # powershell.exe, not pwsh. Anything that only works under PowerShell 7
       # is broken for every user, so 5.1 is validated first and in full.
-      - name: Parse application script (Windows PowerShell 5.1)
+      - name: Parse application scripts (Windows PowerShell 5.1)
         shell: powershell
         run: |
-          $errors = $null
-          $tokens = $null
-          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'Brave-Free-Origin.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
-          if ($errors) {
-            $errors | Format-List *
-            exit 1
+          $failed = $false
+          $files = @(Get-Item 'Brave-Free-Origin.ps1') + @(Get-ChildItem 'src' -Recurse -Filter '*.ps1' -File)
+          foreach ($file in $files) {
+            $errors = $null
+            $tokens = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors) { "$($file.FullName):"; $errors | Format-List *; $failed = $true }
           }
-          "Windows PowerShell $($PSVersionTable.PSVersion) parse OK"
+          if ($failed) { exit 1 }
+          "Windows PowerShell $($PSVersionTable.PSVersion) parse OK ($($files.Count) files)"
 
       - name: Parse tooling scripts (Windows PowerShell 5.1)
         shell: powershell
@@ -70,17 +72,19 @@ jobs:
       # Not the shipping runtime, but a cheap second opinion: it catches
       # constructs that changed meaning between hosts, and the exporter's
       # output must be byte-identical under both (hence the ordinal key sort).
-      - name: Parse application script (PowerShell 7)
+      - name: Parse application scripts (PowerShell 7)
         shell: pwsh
         run: |
-          $errors = $null
-          $tokens = $null
-          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'Brave-Free-Origin.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
-          if ($errors) {
-            $errors | Format-List *
-            exit 1
+          $failed = $false
+          $files = @(Get-Item 'Brave-Free-Origin.ps1') + @(Get-ChildItem 'src' -Recurse -Filter '*.ps1' -File)
+          foreach ($file in $files) {
+            $errors = $null
+            $tokens = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors) { "$($file.FullName):"; $errors | Format-List *; $failed = $true }
           }
-          "PowerShell $($PSVersionTable.PSVersion) parse OK"
+          if ($failed) { exit 1 }
+          "PowerShell $($PSVersionTable.PSVersion) parse OK ($($files.Count) files)"
 
       - name: Validate locales (PowerShell 7)
         shell: pwsh
@@ -103,24 +107,28 @@ jobs:
       # Windows PowerShell 5.1 decodes a BOM-less .ps1 with the system ANSI
       # code page. Any non-ASCII byte in the app would mojibake on machines
       # whose code page differs from the author's, so translated text must
-      # live in locales\*.json and this file must stay pure ASCII.
-      - name: Enforce ASCII-only application script
+      # live in locales\*.json and every script or data file must stay pure ASCII.
+      - name: Enforce ASCII-only application files
         shell: pwsh
         run: |
-          $bytes = [System.IO.File]::ReadAllBytes((Resolve-Path 'Brave-Free-Origin.ps1'))
-          if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
-            throw 'Brave-Free-Origin.ps1 has a UTF-8 BOM. It must be saved without one.'
+          $files = @(Get-Item 'Brave-Free-Origin.ps1') + @(Get-ChildItem 'src', 'tweaks' -Recurse -File -Include '*.ps1', '*.psd1' -ErrorAction SilentlyContinue)
+          foreach ($file in $files) {
+            $name = Resolve-Path -Relative $file.FullName
+            $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
+            if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+              throw "$name has a UTF-8 BOM. It must be saved without one."
+            }
+            $bad = @()
+            $line = 1
+            for ($i = 0; $i -lt $bytes.Length; $i++) {
+              if ($bytes[$i] -eq 0x0A) { $line++ }
+              elseif ($bytes[$i] -gt 127) { $bad += $line }
+            }
+            if ($bad.Count -gt 0) {
+              throw "Non-ASCII bytes in $name at line(s): $(($bad | Select-Object -Unique -First 10) -join ', '). Put translated text in locales\*.json instead."
+            }
           }
-          $bad = @()
-          $line = 1
-          for ($i = 0; $i -lt $bytes.Length; $i++) {
-            if ($bytes[$i] -eq 0x0A) { $line++ }
-            elseif ($bytes[$i] -gt 127) { $bad += $line }
-          }
-          if ($bad.Count -gt 0) {
-            throw "Non-ASCII bytes in Brave-Free-Origin.ps1 at line(s): $(($bad | Select-Object -Unique -First 10) -join ', '). Put translated text in locales\*.json instead."
-          }
-          'ASCII check OK'
+          "ASCII check OK ($($files.Count) files)"
 
       # Locale files are the one place UTF-8 is expected. A BOM or a UTF-16
       # file would be silently mis-decoded by the runtime loader.
@@ -146,6 +154,7 @@ jobs:
         run: |
           if (-not (Test-Path 'Brave-Free-Origin.bat')) { throw 'Launcher is missing.' }
           if (-not (Test-Path 'Brave-Free-Origin.ps1')) { throw 'PowerShell app is missing.' }
+          if (-not (Test-Path 'src' -PathType Container)) { throw 'src folder is missing.' }
           $bat = Get-Content 'Brave-Free-Origin.bat' -Raw
           if ($bat -notmatch 'Brave-Free-Origin\.ps1') { throw 'Launcher does not reference Brave-Free-Origin.ps1.' }
           'Launcher check OK'
@@ -166,7 +175,8 @@ jobs:
             'TRANSLATING.md',
             'LICENSE',
             'images',
-            'locales'
+            'locales',
+            'src'
           ) -DestinationPath $out -Force
           Get-FileHash $out -Algorithm SHA256 | Format-List
 
@@ -188,6 +198,12 @@ jobs:
             'locales/zh-CN.json',
             'images/screenshot.png'
           )
+          # Every file the entry script dot-sources must ship, or the app cannot start.
+          $main = Get-Content 'Brave-Free-Origin.ps1' -Raw
+          $block = [regex]::Match($main, '(?s)\$script:SourceFiles = @\((.*?)\)').Groups[1].Value
+          $loaded = @([regex]::Matches($block, "'([^']+)'") | ForEach-Object { 'src/' + ($_.Groups[1].Value -replace '\\', '/') })
+          if ($loaded.Count -eq 0) { throw 'Could not read the load list from Brave-Free-Origin.ps1.' }
+          $required += $loaded
           foreach ($needed in $required) {
             if ($names -notcontains $needed -and $names -notcontains ($needed -replace '/', '\')) {
               throw "$needed is missing from the portable zip."

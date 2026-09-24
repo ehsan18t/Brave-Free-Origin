@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-    Validates every file in locales\ against the English catalog embedded in
-    Brave-Free-Origin.ps1.
+    Validates every file in locales\ against the English catalog in
+    src\strings\en-US.ps1.
 
 .DESCRIPTION
     Translations are inert data. This is the gate that keeps them that way.
@@ -42,6 +42,7 @@ param(
     # default of (Join-Path $PSScriptRoot ...) makes the script unusable
     # without explicit paths. Defaults are resolved in the body instead.
     [string]$ScriptPath,
+    [string]$CatalogPath,
     [string]$LocaleDir,
     [int]$MinCoverage    = 50,
     [int]$MaxValueLength = 2000
@@ -50,8 +51,20 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-if (-not $ScriptPath) { $ScriptPath = Join-Path $repoRoot 'Brave-Free-Origin.ps1' }
-if (-not $LocaleDir)  { $LocaleDir  = Join-Path $repoRoot 'locales' }
+if (-not $ScriptPath)  { $ScriptPath  = Join-Path $repoRoot 'Brave-Free-Origin.ps1' }
+if (-not $CatalogPath) { $CatalogPath = Join-Path $repoRoot 'src\strings\en-US.ps1' }
+if (-not $LocaleDir)   { $LocaleDir   = Join-Path $repoRoot 'locales' }
+
+# Everything the app runs or loads: the entry script, src\ and the tweak data.
+$appRoot = Split-Path -Parent $ScriptPath
+$sourceFiles = @((Get-Item -LiteralPath $ScriptPath).FullName)
+foreach ($dir in @('src', 'tweaks')) {
+    $full = Join-Path $appRoot $dir
+    if (Test-Path -LiteralPath $full) {
+        $sourceFiles += @(Get-ChildItem -LiteralPath $full -Recurse -File -Include '*.ps1', '*.psd1' |
+                          Sort-Object FullName | ForEach-Object { $_.FullName })
+    }
+}
 
 $script:failures = @()
 $script:warnings = @()
@@ -168,10 +181,10 @@ function Get-JsonKeyOccurrence {
 # ---- embedded English catalog ----------------------------------------------
 $tokens = $null; $parseErrors = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile(
-    (Resolve-Path $ScriptPath).Path, [ref]$tokens, [ref]$parseErrors)
+    (Resolve-Path $CatalogPath).Path, [ref]$tokens, [ref]$parseErrors)
 if ($parseErrors) {
     $parseErrors | ForEach-Object { Write-Host "  parse: $($_.Message)" }
-    throw "$ScriptPath does not parse."
+    throw "$CatalogPath does not parse."
 }
 
 $english = @{}
@@ -195,9 +208,9 @@ if ($english.Count -eq 0) { throw 'No Add-Strings blocks found - catalog extract
 Write-Host "Embedded English catalog: $($english.Count) keys."
 
 # Every key the app asks for at runtime must exist in English.
-$sourceText = Get-Content $ScriptPath -Raw
+$sourceText = ($sourceFiles | ForEach-Object { Get-Content -LiteralPath $_ -Raw }) -join "`n"
 $referenced = @{}
-foreach ($m in [regex]::Matches($sourceText, "(?:\bT\s+|Set-Loc(?:Tooltip)?\s+\`$[^\s]+\s+|Set-FlowTabTitleKey\s+\`$[^\s]+\s+|(?:Label|Name|Description)Key=)'([a-z][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)+)'")) {
+foreach ($m in [regex]::Matches($sourceText, "(?:\bT\s+|Set-Loc(?:Tooltip)?\s+\`$[^\s]+\s+|Set-FlowTabTitleKey\s+\`$[^\s]+\s+|(?:Label|Name|Description)Key\s*=\s*)'([a-z][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)+)'")) {
     $referenced[$m.Groups[1].Value] = $true
 }
 foreach ($key in $referenced.Keys) {

@@ -49,8 +49,7 @@ function Show-TextReport {
         $sfd = New-Object System.Windows.Forms.SaveFileDialog
         $sfd.Filter = '{0} (*.txt)|*.txt' -f (T 'dialog.filter.textReport')
         $sfd.FileName = $DefaultFileName
-        $sfd.InitialDirectory = Join-Path $env:USERPROFILE 'Documents\Brave-Free-Origin-Backups'
-        if (-not (Test-Path $sfd.InitialDirectory)) { New-Item -ItemType Directory -Path $sfd.InitialDirectory | Out-Null }
+        $sfd.InitialDirectory = Get-BackupDir -Create
         if ($sfd.ShowDialog() -eq 'OK') {
             Set-Content -Path $sfd.FileName -Value $tb.Text -Encoding UTF8
             Write-Log "Report saved: $($sfd.FileName)" 'OK'

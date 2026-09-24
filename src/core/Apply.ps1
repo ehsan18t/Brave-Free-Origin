@@ -3,6 +3,25 @@
 #  Dot-sourced by Brave-Free-Origin.ps1; see the load order there.
 # ============================================================================
 
+# Unticking a task or service, and the full restore, both put it back to how
+# Brave installs it. Errors are left to the caller, which knows what to log.
+function Enable-BraveTask {
+    param([string]$Name)
+    $task = Get-ScheduledTask -TaskName $Name -ErrorAction SilentlyContinue
+    if ($task -and $task.State -eq 'Disabled') {
+        Enable-ScheduledTask -TaskName $Name -ErrorAction Stop | Out-Null
+        Write-Log "ENABLED task $Name" 'OK'
+    }
+}
+
+function Reset-BraveService {
+    param([string]$Name, [string]$StartType)
+    if ($StartType -eq 'Disabled') {
+        Set-Service -Name $Name -StartupType Manual -ErrorAction Stop
+        Write-Log "RESET service $Name to Manual" 'OK'
+    }
+}
+
 # Writes the current selection to every target channel: policies first, then
 # the search / new tab / startup overrides, then scheduled tasks and services.
 # Hosts blocks and scriptlets are not touched; their own tabs apply them.
@@ -14,22 +33,21 @@ function Invoke-Apply {
 
     $applied = 0
     $cleared = 0
-    $originalPath = $script:BravePolicyPath
     foreach ($channel in $script:TargetChannels) {
-        $script:BravePolicyPath = $script:Channels[$channel].Path
-        Write-Log "--- Applying to channel: $channel ($($script:BravePolicyPath)) ---"
+        $path = $script:Channels[$channel].Path
+        Write-Log "--- Applying to channel: $channel ($path) ---"
         foreach ($cb in $script:CheckBoxes) {
             $p = $cb.Tag.Policy
             if ($cb.Checked) {
                 try {
-                    Set-PolicyValue -Name $p.Name -Type $p.Type -Value $p.ApplyValue
+                    Set-PolicyValue -Path $path -Name $p.Name -Type $p.Type -Value $p.ApplyValue
                     Write-Log "[$channel] SET $($p.Name) = $($p.ApplyValue)" 'OK'
                     $applied++
                 } catch {
                     Write-Log "[$channel] FAIL $($p.Name): $_" 'ERR'
                 }
             } else {
-                if (Remove-PolicyValue -Name $p.Name) {
+                if (Remove-PolicyValue -Path $path -Name $p.Name) {
                     Write-Log "[$channel] CLEARED $($p.Name)" 'OK'
                     $cleared++
                 }
@@ -38,20 +56,12 @@ function Invoke-Apply {
 
         # Search/NTP/Startup overrides run LAST so they always win over any
         # NewTabPageLocation/HomepageLocation/RestoreOnStartup ticks above.
-        # Each helper clears its own keys first, so unticking + Apply truly removes them.
-        if ($script:BravePolicyPath -and (Test-Path $script:BravePolicyPath)) {
-            try { [void](Apply-SearchEngineOverride -Path $script:BravePolicyPath) } catch { Write-Log "[$channel] Search override: $_" 'ERR' }
-            try { [void](Apply-NtpOverride          -Path $script:BravePolicyPath) } catch { Write-Log "[$channel] NTP override: $_" 'ERR' }
-            try { [void](Apply-StartupOverride      -Path $script:BravePolicyPath) } catch { Write-Log "[$channel] Startup override: $_" 'ERR' }
-        } elseif ($script:ChkSearchOverride.Checked -or $script:ChkNtpOverride.Checked -or $script:ChkStartupOverride.Checked) {
-            # No policy key yet but overrides are requested - create the key and run them
-            New-Item -Path $script:BravePolicyPath -Force | Out-Null
-            try { [void](Apply-SearchEngineOverride -Path $script:BravePolicyPath) } catch { Write-Log "[$channel] Search override: $_" 'ERR' }
-            try { [void](Apply-NtpOverride          -Path $script:BravePolicyPath) } catch { Write-Log "[$channel] NTP override: $_" 'ERR' }
-            try { [void](Apply-StartupOverride      -Path $script:BravePolicyPath) } catch { Write-Log "[$channel] Startup override: $_" 'ERR' }
-        }
+        # Each helper clears its own values first, so unticking + Apply truly
+        # removes them, and creates the policy key only when it has a value to write.
+        try { [void](Apply-SearchEngineOverride -Path $path) } catch { Write-Log "[$channel] Search override: $_" 'ERR' }
+        try { [void](Apply-NtpOverride          -Path $path) } catch { Write-Log "[$channel] NTP override: $_" 'ERR' }
+        try { [void](Apply-StartupOverride      -Path $path) } catch { Write-Log "[$channel] Startup override: $_" 'ERR' }
     }
-    $script:BravePolicyPath = $originalPath
 
     foreach ($cb in $script:TaskCheckBoxes) {
         $t = $cb.Tag
@@ -60,11 +70,7 @@ function Invoke-Apply {
                 Disable-ScheduledTask -TaskName $t.Name -ErrorAction Stop | Out-Null
                 Write-Log "DISABLED task $($t.Name)" 'OK'
             } else {
-                $existing = Get-ScheduledTask -TaskName $t.Name -ErrorAction SilentlyContinue
-                if ($existing -and $existing.State -eq 'Disabled') {
-                    Enable-ScheduledTask -TaskName $t.Name -ErrorAction Stop | Out-Null
-                    Write-Log "ENABLED task $($t.Name)" 'OK'
-                }
+                Enable-BraveTask -Name $t.Name
             }
         } catch {
             Write-Log "Task $($t.Name): $_" 'WARN'
@@ -84,10 +90,7 @@ function Invoke-Apply {
                 Set-Service -Name $s.Name -StartupType Disabled -ErrorAction Stop
                 Write-Log "DISABLED service $($s.Name)" 'OK'
             } else {
-                if ($svc.StartType -eq 'Disabled') {
-                    Set-Service -Name $s.Name -StartupType Manual -ErrorAction Stop
-                    Write-Log "RESET service $($s.Name) to Manual" 'OK'
-                }
+                Reset-BraveService -Name $s.Name -StartType $svc.StartType
             }
         } catch {
             Write-Log "Service $($s.Name): $_" 'WARN'
@@ -128,11 +131,7 @@ function Invoke-FullRestore {
 
     foreach ($t in $script:ScheduledTasks) {
         try {
-            $task = Get-ScheduledTask -TaskName $t.Name -ErrorAction SilentlyContinue
-            if ($task -and $task.State -eq 'Disabled') {
-                Enable-ScheduledTask -TaskName $t.Name -ErrorAction Stop | Out-Null
-                Write-Log "ENABLED task $($t.Name)" 'OK'
-            }
+            Enable-BraveTask -Name $t.Name
         } catch {
             Write-Log "Full restore task $($t.Name): $_" 'WARN'
         }
@@ -141,10 +140,7 @@ function Invoke-FullRestore {
     foreach ($s in $script:Services) {
         try {
             $svc = Get-Service -Name $s.Name -ErrorAction SilentlyContinue
-            if ($svc -and $svc.StartType -eq 'Disabled') {
-                Set-Service -Name $s.Name -StartupType Manual -ErrorAction Stop
-                Write-Log "RESET service $($s.Name) to Manual" 'OK'
-            }
+            if ($svc) { Reset-BraveService -Name $s.Name -StartType $svc.StartType }
         } catch {
             Write-Log "Full restore service $($s.Name): $_" 'WARN'
         }
@@ -152,13 +148,9 @@ function Invoke-FullRestore {
 
     Push-SuppressSelectionEvents
     try {
-        foreach ($cb in $script:CheckBoxes)        { $cb.Checked = $false }
-        foreach ($cb in $script:TaskCheckBoxes)    { $cb.Checked = $false }
-        foreach ($cb in $script:ServiceCheckBoxes) { $cb.Checked = $false }
-        foreach ($cb in $script:HostsCheckBoxes)   { $cb.Checked = $false }
-        if ($script:ChkSearchOverride)  { $script:ChkSearchOverride.Checked = $false }
-        if ($script:ChkNtpOverride)     { $script:ChkNtpOverride.Checked = $false }
-        if ($script:ChkStartupOverride) { $script:ChkStartupOverride.Checked = $false }
+        $everyBox = @($script:CheckBoxes) + @($script:TaskCheckBoxes) + @($script:ServiceCheckBoxes) +
+                    @($script:HostsCheckBoxes) + @($script:ChkSearchOverride, $script:ChkNtpOverride, $script:ChkStartupOverride)
+        foreach ($cb in $everyBox) { $cb.Checked = $false }
     } finally {
         Pop-SuppressSelectionEvents
     }

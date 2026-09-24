@@ -3,36 +3,37 @@
 #  Dot-sourced by Brave-Free-Origin.ps1; see the load order there.
 # ============================================================================
 
-function Get-ExistingPolicy {
-    param([string]$Name)
-    try {
-        $v = Get-ItemProperty -Path $script:BravePolicyPath -Name $Name -ErrorAction Stop
-        return $v.$Name
-    } catch { return $null }
-}
-
+# Writes one policy value, creating the policy key first if needed.
 function Set-PolicyValue {
-    param([string]$Name, [string]$Type, $Value)
-    if (-not (Test-Path $script:BravePolicyPath)) {
-        New-Item -Path $script:BravePolicyPath -Force | Out-Null
+    param([string]$Path, [string]$Name, [string]$Type, $Value)
+    if (-not (Test-Path $Path)) {
+        New-Item -Path $Path -Force | Out-Null
     }
     $regType = if ($Type -eq 'DWORD') { 'DWord' } else { 'String' }
-    New-ItemProperty -Path $script:BravePolicyPath -Name $Name -Value $Value -PropertyType $regType -Force | Out-Null
+    New-ItemProperty -Path $Path -Name $Name -Value $Value -PropertyType $regType -Force | Out-Null
 }
 
+# Removes one policy value. Returns $true only when there was one to remove.
 function Remove-PolicyValue {
-    param([string]$Name)
+    param([string]$Path, [string]$Name)
     try {
-        Remove-ItemProperty -Path $script:BravePolicyPath -Name $Name -ErrorAction Stop
+        Remove-ItemProperty -Path $Path -Name $Name -ErrorAction Stop
         return $true
     } catch { return $false }
 }
 
+# Writes a table built by one of the Get-Desired*Override functions:
+# name -> @{ Type = 'DWORD' or 'STRING'; Value = ... }, in table order.
+function Write-DesiredValues {
+    param([string]$Path, [System.Collections.IDictionary]$Desired)
+    foreach ($name in $Desired.Keys) {
+        Set-PolicyValue -Path $Path -Name $name -Type $Desired[$name].Type -Value $Desired[$name].Value
+    }
+}
+
 function Export-Backup {
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $dir = Join-Path $env:USERPROFILE 'Documents\Brave-Free-Origin-Backups'
-    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
-    $file = Join-Path $dir "brave-policies-backup-$stamp.reg"
+    $file = Join-Path (Get-BackupDir -Create) "brave-policies-backup-$stamp.reg"
     $regKey = 'HKLM\Software\Policies\BraveSoftware'
     & reg.exe EXPORT $regKey $file /y 2>&1 | Out-Null
     if ($LASTEXITCODE -eq 0) {

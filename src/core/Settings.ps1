@@ -31,3 +31,13 @@ function Save-BfoSettings {
         [System.IO.File]::WriteAllText($Path, $json, $utf8)
     } catch { }
 }
+
+# ---- Backup folder ---------------------------------------------------------
+# Registry and hosts backups, exported configs and saved reports all land here.
+# -Create makes sure the folder exists; a file-open dialog only needs the path.
+function Get-BackupDir {
+    param([switch]$Create)
+    $dir = Join-Path $env:USERPROFILE 'Documents\Brave-Free-Origin-Backups'
+    if ($Create -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
+    return $dir
+}

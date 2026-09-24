@@ -3,44 +3,23 @@
 #  Dot-sourced by Brave-Free-Origin.ps1; see the load order there.
 # ============================================================================
 
-$script:BravePolicyPath = 'HKLM:\Software\Policies\BraveSoftware\Brave'
-
 # ---- Multi-channel support (v1.5) -------------------------------------------
 # Each Brave channel keeps its own policy hive. Default target is Stable.
 # If user picks "All installed channels", every detected install gets the apply.
-$script:Channels = [ordered]@{
-    'Stable'  = @{
-        Path = 'HKLM:\Software\Policies\BraveSoftware\Brave'
-        InstallProbes = @(
-            "$env:ProgramFiles\BraveSoftware\Brave-Browser\Application\brave.exe",
-            "${env:ProgramFiles(x86)}\BraveSoftware\Brave-Browser\Application\brave.exe",
-            "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\Application\brave.exe"
-        )
+# Every channel follows the same naming: the Stable names plus a suffix, probed
+# in Program Files, Program Files (x86) and the per-user install folder.
+$script:Channels = & {
+    $table = [ordered]@{}
+    foreach ($spec in @(@('Stable', ''), @('Beta', '-Beta'), @('Nightly', '-Nightly'), @('Dev', '-Dev'))) {
+        $suffix = $spec[1]
+        $table[$spec[0]] = @{
+            Path          = "HKLM:\Software\Policies\BraveSoftware\Brave$suffix"
+            InstallProbes = @(foreach ($base in @($env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:LOCALAPPDATA)) {
+                "$base\BraveSoftware\Brave-Browser$suffix\Application\brave.exe"
+            })
+        }
     }
-    'Beta'    = @{
-        Path = 'HKLM:\Software\Policies\BraveSoftware\Brave-Beta'
-        InstallProbes = @(
-            "$env:ProgramFiles\BraveSoftware\Brave-Browser-Beta\Application\brave.exe",
-            "${env:ProgramFiles(x86)}\BraveSoftware\Brave-Browser-Beta\Application\brave.exe",
-            "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser-Beta\Application\brave.exe"
-        )
-    }
-    'Nightly' = @{
-        Path = 'HKLM:\Software\Policies\BraveSoftware\Brave-Nightly'
-        InstallProbes = @(
-            "$env:ProgramFiles\BraveSoftware\Brave-Browser-Nightly\Application\brave.exe",
-            "${env:ProgramFiles(x86)}\BraveSoftware\Brave-Browser-Nightly\Application\brave.exe",
-            "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser-Nightly\Application\brave.exe"
-        )
-    }
-    'Dev'     = @{
-        Path = 'HKLM:\Software\Policies\BraveSoftware\Brave-Dev'
-        InstallProbes = @(
-            "$env:ProgramFiles\BraveSoftware\Brave-Browser-Dev\Application\brave.exe",
-            "${env:ProgramFiles(x86)}\BraveSoftware\Brave-Browser-Dev\Application\brave.exe",
-            "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser-Dev\Application\brave.exe"
-        )
-    }
+    $table
 }
 $script:TargetChannels = @('Stable')
 
@@ -54,13 +33,9 @@ function Get-DetectedChannels {
     return $found
 }
 
+# Path of the Stable brave.exe, or $null when Stable is not installed.
 function Test-BraveInstalled {
-    $paths = @(
-        "$env:ProgramFiles\BraveSoftware\Brave-Browser\Application\brave.exe",
-        "${env:ProgramFiles(x86)}\BraveSoftware\Brave-Browser\Application\brave.exe",
-        "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\Application\brave.exe"
-    )
-    foreach ($p in $paths) { if (Test-Path $p) { return $p } }
+    foreach ($p in $script:Channels['Stable'].InstallProbes) { if (Test-Path $p) { return $p } }
     return $null
 }
 

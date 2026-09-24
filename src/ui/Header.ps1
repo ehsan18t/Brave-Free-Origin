@@ -78,11 +78,9 @@ $script:ChannelCombo.Add_SelectedIndexChanged({
     if ($id -eq '__ALL__') {
         $script:TargetChannels = Get-DetectedChannels
         if ($script:TargetChannels.Count -eq 0) { $script:TargetChannels = @('Stable') }
-        $script:BravePolicyPath = $script:Channels[$script:TargetChannels[0]].Path
         $script:TargetPathLabel.Text = T 'header.hives' @(($script:TargetChannels -join ', '), $script:TargetChannels.Count)
     } elseif ($id) {
         $script:TargetChannels = @($id)
-        $script:BravePolicyPath = $script:Channels[$id].Path
         $script:TargetPathLabel.Text = "-> $($script:Channels[$id].Path)"
     }
     Write-Log "Target channel(s): $($script:TargetChannels -join ', ')"

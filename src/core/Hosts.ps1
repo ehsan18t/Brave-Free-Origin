@@ -11,42 +11,47 @@ $script:HostsFile = "$env:WINDIR\System32\drivers\etc\hosts"
 function Backup-HostsFile {
     if (-not (Test-Path $script:HostsFile)) { return $null }
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $dir = Join-Path $env:USERPROFILE 'Documents\Brave-Free-Origin-Backups'
-    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
-    $file = Join-Path $dir "hosts-backup-$stamp.bak"
+    $file = Join-Path (Get-BackupDir -Create) "hosts-backup-$stamp.bak"
     Copy-Item $script:HostsFile $file -Force
     Write-Log "Hosts backup saved: $file" 'OK'
     return $file
 }
 
-function Get-HostsCurrentDomains {
-    if (-not (Test-Path $script:HostsFile)) { return @() }
-    $lines = Get-Content $script:HostsFile -ErrorAction SilentlyContinue
-    $inBlock = $false
+# Splits the hosts file into the lines this app does not own (Kept) and the
+# domains inside its sentinel block (Domains).
+function Read-HostsFile {
+    $kept = New-Object System.Collections.ArrayList
     $domains = @()
-    foreach ($line in $lines) {
-        if ($line -eq $script:HostsSentinelStart) { $inBlock = $true; continue }
-        if ($line -eq $script:HostsSentinelEnd)   { $inBlock = $false; continue }
-        if ($inBlock -and $line -match '^\s*0\.0\.0\.0\s+(\S+)') {
-            $domains += $Matches[1]
+    if (Test-Path $script:HostsFile) {
+        $inBlock = $false
+        foreach ($line in (Get-Content $script:HostsFile -ErrorAction SilentlyContinue)) {
+            if ($line -eq $script:HostsSentinelStart) { $inBlock = $true; continue }
+            if ($line -eq $script:HostsSentinelEnd)   { $inBlock = $false; continue }
+            if (-not $inBlock) { [void]$kept.Add($line) }
+            elseif ($line -match '^\s*0\.0\.0\.0\s+(\S+)') { $domains += $Matches[1] }
         }
     }
-    return $domains
+    return [pscustomobject]@{ Kept = $kept; Domains = $domains }
+}
+
+function Get-HostsCurrentDomains {
+    return (Read-HostsFile).Domains
+}
+
+# Ticks each hosts group whose every domain is already in the managed block.
+function Sync-HostsCheckBoxes {
+    param([string[]]$Current)
+    foreach ($cb in $script:HostsCheckBoxes) {
+        $cb.Checked = (@($cb.Tag.Domains | Where-Object { $Current -notcontains $_ }).Count -eq 0)
+    }
 }
 
 function Set-HostsBlockDomains {
     param([string[]]$Domains)
     [void](Backup-HostsFile)
 
-    # Read all lines, strip out our existing sentinel block (if any)
-    $lines = if (Test-Path $script:HostsFile) { Get-Content $script:HostsFile } else { @() }
-    $kept = New-Object System.Collections.ArrayList
-    $skipping = $false
-    foreach ($line in $lines) {
-        if ($line -eq $script:HostsSentinelStart) { $skipping = $true; continue }
-        if ($line -eq $script:HostsSentinelEnd)   { $skipping = $false; continue }
-        if (-not $skipping) { [void]$kept.Add($line) }
-    }
+    # Everything outside our existing sentinel block (if any) is kept as is.
+    $kept = (Read-HostsFile).Kept
 
     # Trim trailing blank lines from existing content for tidiness
     while ($kept.Count -gt 0 -and [string]::IsNullOrWhiteSpace($kept[$kept.Count - 1])) {

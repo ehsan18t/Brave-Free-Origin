@@ -19,8 +19,7 @@ $btnExport.Add_Click({
     $sfd = New-Object System.Windows.Forms.SaveFileDialog
     $sfd.Filter = '{0} (*.json)|*.json' -f (T 'dialog.filter.config')
     $sfd.FileName = "brave-free-origin-config-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
-    $sfd.InitialDirectory = Join-Path $env:USERPROFILE 'Documents\Brave-Free-Origin-Backups'
-    if (-not (Test-Path $sfd.InitialDirectory)) { New-Item -ItemType Directory -Path $sfd.InitialDirectory | Out-Null }
+    $sfd.InitialDirectory = Get-BackupDir -Create
     if ($sfd.ShowDialog() -ne 'OK') { return }
 
     # schemaVersion tracks the config format, appVersion tracks the app. They
@@ -74,7 +73,7 @@ $btnImport.Location = New-Object System.Drawing.Point(535, 5)
 $btnImport.Add_Click({
     $ofd = New-Object System.Windows.Forms.OpenFileDialog
     $ofd.Filter = '{0} (*.json)|*.json' -f (T 'dialog.filter.config')
-    $ofd.InitialDirectory = Join-Path $env:USERPROFILE 'Documents\Brave-Free-Origin-Backups'
+    $ofd.InitialDirectory = Get-BackupDir
     if ($ofd.ShowDialog() -ne 'OK') { return }
     try {
         $cfg = Get-Content $ofd.FileName -Raw | ConvertFrom-Json
@@ -192,13 +191,10 @@ $btnVerify.Add_Click({
             if (-not $cb.Checked) { continue }
             $tickedCount++
             $p = $cb.Tag.Policy
-            try {
-                $cur = (Get-ItemProperty -Path $path -Name $p.Name -ErrorAction Stop).$($p.Name)
-                if ("$cur" -eq "$($p.ApplyValue)") { $matchCount++ }
-                else { $mismatchCount++; $mismatchList += "$($p.Name): registry=$cur, expected=$($p.ApplyValue)" }
-            } catch {
-                $missingCount++; $missingList += $p.Name
-            }
+            $state = Get-RegistryValueState -Path $path -Name $p.Name
+            if (-not $state.Exists) { $missingCount++; $missingList += $p.Name }
+            elseif ("$($state.Value)" -eq "$($p.ApplyValue)") { $matchCount++ }
+            else { $mismatchCount++; $mismatchList += "$($p.Name): registry=$($state.Value), expected=$($p.ApplyValue)" }
         }
         [void]$report.AppendLine("  Ticked in UI: $tickedCount")
         [void]$report.AppendLine("  Match in registry: $matchCount")
@@ -219,9 +215,7 @@ $btnVerify.Add_Click({
     $hostsCurrent = Get-HostsCurrentDomains
     [void]$report.AppendLine("=== Hosts blocklist ===")
     [void]$report.AppendLine("  Currently blocked domains: $($hostsCurrent.Count)")
-    if ($hostsCurrent.Count -gt 0) {
-        foreach ($d in $hostsCurrent) { [void]$report.AppendLine("     - $d") }
-    }
+    foreach ($d in $hostsCurrent) { [void]$report.AppendLine("     - $d") }
     [void]$report.AppendLine('')
 
     # Search / NTP / Startup overrides
@@ -230,30 +224,21 @@ $btnVerify.Add_Click({
         $path = $script:Channels[$channel].Path
         [void]$report.AppendLine("  [$channel]")
         if (-not (Test-Path $path)) { [void]$report.AppendLine('     (no policy key - nothing set)'); continue }
-        try {
-            $se = (Get-ItemProperty -Path $path -Name 'DefaultSearchProviderEnabled' -ErrorAction Stop).DefaultSearchProviderEnabled
-            $name = (Get-ItemProperty -Path $path -Name 'DefaultSearchProviderName' -ErrorAction SilentlyContinue).DefaultSearchProviderName
-            $url  = (Get-ItemProperty -Path $path -Name 'DefaultSearchProviderSearchURL' -ErrorAction SilentlyContinue).DefaultSearchProviderSearchURL
-            if ($se -eq 1) { [void]$report.AppendLine("     Search engine forced: $name ($url)") }
-            else           { [void]$report.AppendLine('     Search engine override: not set') }
-        } catch { [void]$report.AppendLine('     Search engine override: not set') }
-        try {
-            $ntp = (Get-ItemProperty -Path $path -Name 'NewTabPageLocation' -ErrorAction Stop).NewTabPageLocation
-            [void]$report.AppendLine("     New tab page forced: $ntp")
-        } catch { [void]$report.AppendLine('     New tab page override: not set') }
-        try {
-            $rc = (Get-ItemProperty -Path $path -Name 'RestoreOnStartup' -ErrorAction Stop).RestoreOnStartup
-            $listPath = Join-Path $path 'RestoreOnStartupURLs'
-            $urls = @()
-            if (Test-Path $listPath) {
-                $props = Get-ItemProperty -Path $listPath
-                foreach ($p in $props.PSObject.Properties) {
-                    if ($p.Name -match '^\d+$') { $urls += $p.Value }
-                }
-            }
+        $se = Get-RegistryValueState -Path $path -Name 'DefaultSearchProviderEnabled'
+        if ($se.Exists -and $se.Value -eq 1) {
+            $name = (Get-RegistryValueState -Path $path -Name 'DefaultSearchProviderName').Value
+            $url  = (Get-RegistryValueState -Path $path -Name 'DefaultSearchProviderSearchURL').Value
+            [void]$report.AppendLine("     Search engine forced: $name ($url)")
+        } else { [void]$report.AppendLine('     Search engine override: not set') }
+        $ntp = Get-RegistryValueState -Path $path -Name 'NewTabPageLocation'
+        if ($ntp.Exists) { [void]$report.AppendLine("     New tab page forced: $($ntp.Value)") }
+        else { [void]$report.AppendLine('     New tab page override: not set') }
+        $rc = Get-RegistryValueState -Path $path -Name 'RestoreOnStartup'
+        if ($rc.Exists) {
+            $urls = @(Get-RegistryNumberedValues -Path (Join-Path $path 'RestoreOnStartupURLs'))
             $extra = if ($urls.Count -gt 0) { " URLs: $($urls -join ', ')" } else { '' }
-            [void]$report.AppendLine("     Startup forced: code $rc$extra")
-        } catch { [void]$report.AppendLine('     Startup override: not set') }
+            [void]$report.AppendLine("     Startup forced: code $($rc.Value)$extra")
+        } else { [void]$report.AppendLine('     Startup override: not set') }
     }
 
     Show-TextReport -Title (T 'report.verifyTitle') -Text ($report.ToString()) -DefaultFileName "brave-free-origin-verify-$(Get-Date -Format 'yyyyMMdd-HHmmss').txt"
@@ -269,11 +254,9 @@ $btnLoad.Add_Click({
     try {
         # Read from the FIRST target channel (loading is single-source by design)
         $loadPath = $script:Channels[$script:TargetChannels[0]].Path
-        $originalPath = $script:BravePolicyPath
-        $script:BravePolicyPath = $loadPath
         foreach ($cb in $script:CheckBoxes) {
             $p = $cb.Tag.Policy
-            $cur = Get-ExistingPolicy $p.Name
+            $cur = (Get-RegistryValueState -Path $loadPath -Name $p.Name).Value
             if ($p.Choices) {
                 # A choice policy counts as "on" whenever a value is present; point
                 # the picker at whatever the registry actually holds.
@@ -292,7 +275,6 @@ $btnLoad.Add_Click({
                 $cb.Checked = ($null -ne $cur -and "$cur" -eq "$($p.ApplyValue)")
             }
         }
-        $script:BravePolicyPath = $originalPath
         foreach ($cb in $script:TaskCheckBoxes) {
             $t = $cb.Tag
             $task = Get-ScheduledTask -TaskName $t.Name -ErrorAction SilentlyContinue
@@ -303,80 +285,42 @@ $btnLoad.Add_Click({
             $svc = Get-Service -Name $s.Name -ErrorAction SilentlyContinue
             $cb.Checked = ($svc -and $svc.StartType -eq 'Disabled')
         }
-        # Hosts state
-        if ($script:HostsCheckBoxes) {
-            $current = Get-HostsCurrentDomains
-            foreach ($cb in $script:HostsCheckBoxes) {
-                $blockDomains = $cb.Tag.Domains
-                $allPresent = $true
-                foreach ($d in $blockDomains) { if ($current -notcontains $d) { $allPresent = $false; break } }
-                $cb.Checked = $allPresent
-            }
-        }
+        Sync-HostsCheckBoxes -Current @(Get-HostsCurrentDomains)
         # Search engine override state
-        if ($script:ChkSearchOverride) {
-            $sePath = $loadPath
-            $seEnabled = $false
-            try {
-                $val = (Get-ItemProperty -Path $sePath -Name 'DefaultSearchProviderEnabled' -ErrorAction Stop).DefaultSearchProviderEnabled
-                $seEnabled = ($val -eq 1)
-            } catch { $seEnabled = $false }
-            $script:ChkSearchOverride.Checked = $seEnabled
-            if ($seEnabled) {
-                try {
-                    $url = (Get-ItemProperty -Path $sePath -Name 'DefaultSearchProviderSearchURL' -ErrorAction Stop).DefaultSearchProviderSearchURL
-                    $matched = $false
-                    foreach ($key in $script:SearchEngines.Keys) {
-                        if (-not $script:SearchEngines[$key].IsCustom -and $script:SearchEngines[$key].URL -eq $url) {
-                            [void](Set-ComboId -Combo $script:CmbSearchEngine -Ids $script:SearchEngineIds -Id $key)
-                            $matched = $true; break
-                        }
-                    }
-                    if (-not $matched) {
-                        [void](Set-ComboId -Combo $script:CmbSearchEngine -Ids $script:SearchEngineIds -Id 'custom')
-                        $script:TxtCustomSearchUrl.Text = $url
-                    }
-                } catch {}
+        $se = Get-RegistryValueState -Path $loadPath -Name 'DefaultSearchProviderEnabled'
+        $script:ChkSearchOverride.Checked = ($se.Exists -and $se.Value -eq 1)
+        $url = Get-RegistryValueState -Path $loadPath -Name 'DefaultSearchProviderSearchURL'
+        if ($script:ChkSearchOverride.Checked -and $url.Exists) {
+            $engineId = @($script:SearchEngineIds | Where-Object {
+                -not $script:SearchEngines[$_].IsCustom -and $script:SearchEngines[$_].URL -eq $url.Value
+            } | Select-Object -First 1)
+            if ($engineId.Count -gt 0) {
+                [void](Set-ComboId -Combo $script:CmbSearchEngine -Ids $script:SearchEngineIds -Id $engineId[0])
+            } else {
+                [void](Set-ComboId -Combo $script:CmbSearchEngine -Ids $script:SearchEngineIds -Id 'custom')
+                $script:TxtCustomSearchUrl.Text = $url.Value
             }
         }
         # NTP override state
-        if ($script:ChkNtpOverride) {
-            try {
-                $ntpUrl = (Get-ItemProperty -Path $loadPath -Name 'NewTabPageLocation' -ErrorAction Stop).NewTabPageLocation
-                $script:ChkNtpOverride.Checked = $true
-                $matched = $false
-                foreach ($k in $script:DestinationOptions.Keys) {
-                    if ($script:DestinationOptions[$k].Value -eq $ntpUrl) {
-                        $matched = [bool](Set-ComboId -Combo $script:CmbNtpDest -Ids $script:DestinationIds -Id $k)
-                        if ($matched) { break }
-                    }
-                }
-                if (-not $matched) {
-                    [void](Set-ComboId -Combo $script:CmbNtpDest -Ids $script:DestinationIds -Id 'custom')
-                    $script:TxtNtpCustomUrl.Text = $ntpUrl
-                }
-            } catch { $script:ChkNtpOverride.Checked = $false }
+        $ntp = Get-RegistryValueState -Path $loadPath -Name 'NewTabPageLocation'
+        $script:ChkNtpOverride.Checked = $ntp.Exists
+        if ($ntp.Exists) {
+            $destId = @($script:DestinationIds | Where-Object { $script:DestinationOptions[$_].Value -eq $ntp.Value } | Select-Object -First 1)
+            if ($destId.Count -gt 0) {
+                [void](Set-ComboId -Combo $script:CmbNtpDest -Ids $script:DestinationIds -Id $destId[0])
+            } else {
+                [void](Set-ComboId -Combo $script:CmbNtpDest -Ids $script:DestinationIds -Id 'custom')
+                $script:TxtNtpCustomUrl.Text = $ntp.Value
+            }
         }
         # Startup override state
-        if ($script:ChkStartupOverride) {
-            try {
-                $code = (Get-ItemProperty -Path $loadPath -Name 'RestoreOnStartup' -ErrorAction Stop).RestoreOnStartup
-                $script:ChkStartupOverride.Checked = $true
-                foreach ($k in $script:StartupModes.Keys) {
-                    if ($script:StartupModes[$k].Code -eq $code) {
-                        [void](Set-ComboId -Combo $script:CmbStartupMode -Ids $script:StartupModeIds -Id $k); break
-                    }
-                }
-                $listPath = Join-Path $loadPath 'RestoreOnStartupURLs'
-                if (Test-Path $listPath) {
-                    $props = Get-ItemProperty -Path $listPath
-                    $urls = @()
-                    foreach ($p in $props.PSObject.Properties) {
-                        if ($p.Name -match '^\d+$') { $urls += $p.Value }
-                    }
-                    if ($urls.Count -gt 0) { $script:TxtStartupUrl.Text = ($urls -join ', ') }
-                }
-            } catch { $script:ChkStartupOverride.Checked = $false }
+        $rc = Get-RegistryValueState -Path $loadPath -Name 'RestoreOnStartup'
+        $script:ChkStartupOverride.Checked = $rc.Exists
+        if ($rc.Exists) {
+            $modeId = @($script:StartupModeIds | Where-Object { $script:StartupModes[$_].Code -eq $rc.Value } | Select-Object -First 1)
+            if ($modeId.Count -gt 0) { [void](Set-ComboId -Combo $script:CmbStartupMode -Ids $script:StartupModeIds -Id $modeId[0]) }
+            $urls = @(Get-RegistryNumberedValues -Path (Join-Path $loadPath 'RestoreOnStartupURLs'))
+            if ($urls.Count -gt 0) { $script:TxtStartupUrl.Text = ($urls -join ', ') }
         }
     } finally {
         Pop-SuppressSelectionEvents

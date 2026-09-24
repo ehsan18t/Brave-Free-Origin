@@ -3,6 +3,15 @@
 #  Dot-sourced by Brave-Free-Origin.ps1; see the load order there.
 # ============================================================================
 
+# Every value the search override owns, whether or not a given engine uses it.
+$script:SearchOverrideValueNames = @(
+    'DefaultSearchProviderEnabled'
+    'DefaultSearchProviderName'
+    'DefaultSearchProviderKeyword'
+    'DefaultSearchProviderSearchURL'
+    'DefaultSearchProviderSuggestURL'
+)
+
 function Get-DesiredSearchOverride {
     $desired = [ordered]@{}
     if (-not $script:ChkSearchOverride.Checked) { return $desired }
@@ -45,7 +54,7 @@ function Get-DesiredNtpOverride {
 
 function Get-DesiredStartupOverride {
     if (-not $script:ChkStartupOverride.Checked) {
-        return [pscustomobject]@{ Enabled = $false; Code = $null; Urls = @() }
+        return [pscustomobject]@{ Enabled = $false; ModeId = $null; Code = $null; Urls = @() }
     }
 
     $modeId = Get-ComboId -Combo $script:CmbStartupMode -Ids $script:StartupModeIds
@@ -56,7 +65,7 @@ function Get-DesiredStartupOverride {
                 else { @($script:TxtStartupUrl.Text -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
         if ($urls.Count -eq 0) { throw 'Startup override has no URL.' }
     }
-    return [pscustomobject]@{ Enabled = $true; Code = $mode.Code; Urls = $urls }
+    return [pscustomobject]@{ Enabled = $true; ModeId = $modeId; Code = $mode.Code; Urls = $urls }
 }
 
 # ---- Helpers: write search-engine + startup overrides into one channel ------
@@ -72,81 +81,54 @@ function Resolve-Destination {
     }
 }
 
+# The Apply-*Override functions write exactly what the matching
+# Get-Desired*Override computes, the same table Preview reports, so the two
+# cannot drift apart. Each clears its values first so unticking + Apply truly
+# removes them, and a selection that cannot be applied is logged and skipped.
 function Apply-SearchEngineOverride {
     param([string]$Path)
-    # Always clear first so toggling off truly removes them
-    foreach ($n in @('DefaultSearchProviderEnabled','DefaultSearchProviderName','DefaultSearchProviderKeyword','DefaultSearchProviderSearchURL','DefaultSearchProviderSuggestURL')) {
-        try { Remove-ItemProperty -Path $Path -Name $n -ErrorAction Stop } catch {}
-    }
-    if (-not $script:ChkSearchOverride.Checked) { return $false }
+    foreach ($n in $script:SearchOverrideValueNames) { [void](Remove-PolicyValue -Path $Path -Name $n) }
+    try { $desired = Get-DesiredSearchOverride }
+    catch { Write-Log "Search override skipped: $($_.Exception.Message)" 'WARN'; return $false }
+    if ($desired.Count -eq 0) { return $false }
 
-    $engineId = Get-ComboId -Combo $script:CmbSearchEngine -Ids $script:SearchEngineIds
-    $eng = $script:SearchEngines[$engineId]
-    $url = $eng.URL
-    $sug = $eng.Suggest
-    $name = $eng.ProviderName
-    $keyword = $eng.Keyword
-    if ($eng.IsCustom) {
-        $url = $script:TxtCustomSearchUrl.Text.Trim()
-        if ([string]::IsNullOrWhiteSpace($url)) { Write-Log 'Search override skipped: custom URL is empty.' 'WARN'; return $false }
-        if ($url -notmatch '\{searchTerms\}') { Write-Log 'Search override skipped: custom URL must contain {searchTerms}.' 'WARN'; return $false }
-        $name = 'Custom Search'
-    }
-    if (-not (Test-Path $Path)) { New-Item -Path $Path -Force | Out-Null }
-    New-ItemProperty -Path $Path -Name 'DefaultSearchProviderEnabled'   -Value 1     -PropertyType DWord  -Force | Out-Null
-    New-ItemProperty -Path $Path -Name 'DefaultSearchProviderName'      -Value $name -PropertyType String -Force | Out-Null
-    New-ItemProperty -Path $Path -Name 'DefaultSearchProviderKeyword'   -Value $keyword -PropertyType String -Force | Out-Null
-    New-ItemProperty -Path $Path -Name 'DefaultSearchProviderSearchURL' -Value $url  -PropertyType String -Force | Out-Null
-    if ($sug) {
-        New-ItemProperty -Path $Path -Name 'DefaultSearchProviderSuggestURL' -Value $sug -PropertyType String -Force | Out-Null
-    }
-    Write-Log "Search engine override -> $name" 'OK'
+    Write-DesiredValues -Path $Path -Desired $desired
+    Write-Log "Search engine override -> $($desired['DefaultSearchProviderName'].Value)" 'OK'
     return $true
 }
 
 function Apply-NtpOverride {
     param([string]$Path)
-    # Clear first
-    try { Remove-ItemProperty -Path $Path -Name 'NewTabPageLocation' -ErrorAction Stop } catch {}
-    if (-not $script:ChkNtpOverride.Checked) { return $false }
+    [void](Remove-PolicyValue -Path $Path -Name 'NewTabPageLocation')
+    try { $desired = Get-DesiredNtpOverride }
+    catch { Write-Log "NTP override skipped: $($_.Exception.Message)" 'WARN'; return $false }
+    if ($desired.Count -eq 0) { return $false }
 
-    # Resolve destination
-    $engineId = Get-ComboId -Combo $script:CmbSearchEngine -Ids $script:SearchEngineIds
-    $engineHome = if ($script:SearchEngines[$engineId].IsCustom) { '' } else { $script:SearchEngines[$engineId].Home }
-    $url = Resolve-Destination -DestinationId (Get-ComboId -Combo $script:CmbNtpDest -Ids $script:DestinationIds) -CustomUrl $script:TxtNtpCustomUrl.Text -SearchEngineHome $engineHome
-    if (-not $url) { Write-Log 'NTP override skipped: no resolvable URL.' 'WARN'; return $false }
-    if (-not (Test-Path $Path)) { New-Item -Path $Path -Force | Out-Null }
-    New-ItemProperty -Path $Path -Name 'NewTabPageLocation' -Value $url -PropertyType String -Force | Out-Null
-    Write-Log "New tab page override -> $url" 'OK'
+    Write-DesiredValues -Path $Path -Desired $desired
+    Write-Log "New tab page override -> $($desired['NewTabPageLocation'].Value)" 'OK'
     return $true
 }
 
 function Apply-StartupOverride {
     param([string]$Path)
-    # Clear first
-    try { Remove-ItemProperty -Path $Path -Name 'RestoreOnStartup' -ErrorAction Stop } catch {}
+    [void](Remove-PolicyValue -Path $Path -Name 'RestoreOnStartup')
     try { Remove-Item -Path (Join-Path $Path 'RestoreOnStartupURLs') -Recurse -Force -ErrorAction Stop } catch {}
-    if (-not $script:ChkStartupOverride.Checked) { return $false }
+    try { $startup = Get-DesiredStartupOverride }
+    catch { Write-Log "Startup override skipped: $($_.Exception.Message)" 'WARN'; return $false }
+    if (-not $startup.Enabled) { return $false }
 
-    $modeId = Get-ComboId -Combo $script:CmbStartupMode -Ids $script:StartupModeIds
-    $mode = $script:StartupModes[$modeId]
-    if (-not (Test-Path $Path)) { New-Item -Path $Path -Force | Out-Null }
-    New-ItemProperty -Path $Path -Name 'RestoreOnStartup' -Value $mode.Code -PropertyType DWord -Force | Out-Null
-
-    if ($mode.UsesURL) {
+    Set-PolicyValue -Path $Path -Name 'RestoreOnStartup' -Type 'DWORD' -Value $startup.Code
+    if ($startup.Urls.Count -gt 0) {
         $listPath = Join-Path $Path 'RestoreOnStartupURLs'
         New-Item -Path $listPath -Force | Out-Null
-        $urls = if ($mode.FixedURL) { @($mode.FixedURL) }
-                else { ($script:TxtStartupUrl.Text -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
-        if ($urls.Count -eq 0) { Write-Log 'Startup override skipped: no URL provided.' 'WARN'; return $false }
         $i = 1
-        foreach ($u in $urls) {
-            New-ItemProperty -Path $listPath -Name "$i" -Value $u -PropertyType String -Force | Out-Null
+        foreach ($u in @($startup.Urls)) {
+            Set-PolicyValue -Path $listPath -Name "$i" -Type 'STRING' -Value $u
             $i++
         }
-        Write-Log "Startup override -> code $($mode.Code), URLs: $($urls -join ', ')" 'OK'
+        Write-Log "Startup override -> code $($startup.Code), URLs: $($startup.Urls -join ', ')" 'OK'
     } else {
-        Write-Log "Startup override -> $modeId (code $($mode.Code))" 'OK'
+        Write-Log "Startup override -> $($startup.ModeId) (code $($startup.Code))" 'OK'
     }
     return $true
 }

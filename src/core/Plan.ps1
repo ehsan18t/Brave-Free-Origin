@@ -3,34 +3,46 @@
 #  Dot-sourced by Brave-Free-Origin.ps1; see the load order there.
 # ============================================================================
 
+# One preview line for one registry value: ADD, KEEP or CHANGE when it is
+# wanted, CLEAR when it is not wanted but present, or $null when there is
+# nothing to say. Verb is returned separately so callers can count.
+function Get-PlanLine {
+    param($State, [string]$Name, [bool]$Wanted, $Target)
+    $verb = $null
+    if ($Wanted) {
+        if (-not $State.Exists)                { $verb = 'ADD';    $text = "ADD    $Name = $Target" }
+        elseif ("$($State.Value)" -eq "$Target") { $verb = 'KEEP';   $text = "KEEP   $Name = $Target" }
+        else                                   { $verb = 'CHANGE'; $text = "CHANGE $Name : $($State.Value) -> $Target" }
+    } elseif ($State.Exists) {
+        $verb = 'CLEAR'; $text = "CLEAR  $Name (currently $($State.Value))"
+    }
+    if (-not $verb) { return $null }
+    return [pscustomobject]@{ Verb = $verb; Text = $text }
+}
+
+# One override section. GetDesired is the matching Get-Desired*Override; if it
+# throws (for example an empty custom URL) the section shows the error instead.
 function Add-RegistryPlanLines {
     param(
         [System.Text.StringBuilder]$Report,
         [string]$Path,
-        [System.Collections.IDictionary]$Desired,
+        [scriptblock]$GetDesired,
         [string[]]$Names,
         [string]$Title
     )
 
     [void]$Report.AppendLine("  -- $Title")
+    try { $desired = & $GetDesired }
+    catch { [void]$Report.AppendLine("     ERROR: $_"); return }
+
     $changes = 0
     foreach ($name in $Names) {
-        $state = Get-RegistryValueState -Path $Path -Name $name
-        if ($Desired.Contains($name)) {
-            $target = $Desired[$name].Value
-            if (-not $state.Exists) {
-                [void]$Report.AppendLine("     ADD    $name = $target")
-                $changes++
-            } elseif ("$($state.Value)" -eq "$target") {
-                [void]$Report.AppendLine("     KEEP   $name = $target")
-            } else {
-                [void]$Report.AppendLine("     CHANGE $name : $($state.Value) -> $target")
-                $changes++
-            }
-        } elseif ($state.Exists) {
-            [void]$Report.AppendLine("     CLEAR  $name (currently $($state.Value))")
-            $changes++
-        }
+        $wanted = $desired.Contains($name)
+        $target = if ($wanted) { $desired[$name].Value } else { $null }
+        $line = Get-PlanLine -State (Get-RegistryValueState -Path $Path -Name $name) -Name $name -Wanted $wanted -Target $target
+        if (-not $line) { continue }
+        [void]$Report.AppendLine("     $($line.Text)")
+        if ($line.Verb -ne 'KEEP') { $changes++ }
     }
     if ($changes -eq 0) { [void]$Report.AppendLine('     No write needed.') }
 }
@@ -52,68 +64,30 @@ function New-ApplyPlanReport {
     foreach ($channel in $script:TargetChannels) {
         $path = $script:Channels[$channel].Path
         [void]$report.AppendLine("=== $channel  ($path) ===")
-        $adds = 0; $changes = 0; $clears = 0; $keeps = 0
-
+        $counts = @{ ADD = 0; CHANGE = 0; CLEAR = 0; KEEP = 0 }
         foreach ($cb in $script:CheckBoxes) {
             $p = $cb.Tag.Policy
-            $state = Get-RegistryValueState -Path $path -Name $p.Name
-            if ($cb.Checked) {
-                if (-not $state.Exists) {
-                    [void]$report.AppendLine("  ADD    $($p.Name) = $($p.ApplyValue)")
-                    $adds++
-                } elseif ("$($state.Value)" -eq "$($p.ApplyValue)") {
-                    [void]$report.AppendLine("  KEEP   $($p.Name) = $($p.ApplyValue)")
-                    $keeps++
-                } else {
-                    [void]$report.AppendLine("  CHANGE $($p.Name) : $($state.Value) -> $($p.ApplyValue)")
-                    $changes++
-                }
-            } elseif ($state.Exists) {
-                [void]$report.AppendLine("  CLEAR  $($p.Name) (currently $($state.Value))")
-                $clears++
-            }
+            $line = Get-PlanLine -State (Get-RegistryValueState -Path $path -Name $p.Name) -Name $p.Name -Wanted $cb.Checked -Target $p.ApplyValue
+            if (-not $line) { continue }
+            [void]$report.AppendLine("  $($line.Text)")
+            $counts[$line.Verb]++
         }
-        [void]$report.AppendLine("  Summary: $adds add, $changes change, $clears clear, $keeps already correct")
+        [void]$report.AppendLine("  Summary: $($counts.ADD) add, $($counts.CHANGE) change, $($counts.CLEAR) clear, $($counts.KEEP) already correct")
         [void]$report.AppendLine('')
 
-        try {
-            $searchDesired = Get-DesiredSearchOverride
-            Add-RegistryPlanLines -Report $report -Path $path -Desired $searchDesired -Names @(
-                'DefaultSearchProviderEnabled',
-                'DefaultSearchProviderName',
-                'DefaultSearchProviderKeyword',
-                'DefaultSearchProviderSearchURL',
-                'DefaultSearchProviderSuggestURL'
-            ) -Title 'Search override'
-        } catch {
-            [void]$report.AppendLine("  -- Search override")
-            [void]$report.AppendLine("     ERROR: $_")
-        }
+        Add-RegistryPlanLines -Report $report -Path $path -GetDesired { Get-DesiredSearchOverride } -Names $script:SearchOverrideValueNames -Title 'Search override'
+        [void]$report.AppendLine('')
+        Add-RegistryPlanLines -Report $report -Path $path -GetDesired { Get-DesiredNtpOverride } -Names @('NewTabPageLocation') -Title 'New tab override'
         [void]$report.AppendLine('')
 
-        try {
-            $ntpDesired = Get-DesiredNtpOverride
-            Add-RegistryPlanLines -Report $report -Path $path -Desired $ntpDesired -Names @('NewTabPageLocation') -Title 'New tab override'
-        } catch {
-            [void]$report.AppendLine("  -- New tab override")
-            [void]$report.AppendLine("     ERROR: $_")
-        }
-        [void]$report.AppendLine('')
-
+        [void]$report.AppendLine('  -- Startup override')
         try {
             $startup = Get-DesiredStartupOverride
-            [void]$report.AppendLine('  -- Startup override')
             $curStartup = Get-RegistryValueState -Path $path -Name 'RestoreOnStartup'
-            $urlPath = Join-Path $path 'RestoreOnStartupURLs'
-            $curUrls = @(Get-RegistryNumberedValues -Path $urlPath)
+            $curUrls = @(Get-RegistryNumberedValues -Path (Join-Path $path 'RestoreOnStartupURLs'))
+            $line = Get-PlanLine -State $curStartup -Name 'RestoreOnStartup' -Wanted $startup.Enabled -Target $startup.Code
+            if ($line) { [void]$report.AppendLine("     $($line.Text)") }
             if ($startup.Enabled) {
-                if (-not $curStartup.Exists) {
-                    [void]$report.AppendLine("     ADD    RestoreOnStartup = $($startup.Code)")
-                } elseif ("$($curStartup.Value)" -eq "$($startup.Code)") {
-                    [void]$report.AppendLine("     KEEP   RestoreOnStartup = $($startup.Code)")
-                } else {
-                    [void]$report.AppendLine("     CHANGE RestoreOnStartup : $($curStartup.Value) -> $($startup.Code)")
-                }
                 if ($startup.Urls.Count -gt 0) {
                     [void]$report.AppendLine("     REPLACE RestoreOnStartupURLs with $($startup.Urls.Count) URL(s): $($startup.Urls -join ', ')")
                 } elseif ($curUrls.Count -gt 0) {
@@ -122,12 +96,10 @@ function New-ApplyPlanReport {
                     [void]$report.AppendLine('     No startup URL list needed.')
                 }
             } else {
-                if ($curStartup.Exists) { [void]$report.AppendLine("     CLEAR  RestoreOnStartup (currently $($curStartup.Value))") }
                 if ($curUrls.Count -gt 0) { [void]$report.AppendLine("     CLEAR  RestoreOnStartupURLs ($($curUrls.Count) URL(s))") }
-                if (-not $curStartup.Exists -and $curUrls.Count -eq 0) { [void]$report.AppendLine('     No write needed.') }
+                if (-not $line -and $curUrls.Count -eq 0) { [void]$report.AppendLine('     No write needed.') }
             }
         } catch {
-            [void]$report.AppendLine('  -- Startup override')
             [void]$report.AppendLine("     ERROR: $_")
         }
         [void]$report.AppendLine('')

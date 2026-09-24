@@ -90,10 +90,7 @@ $btnApplyHosts.Location = New-Object System.Drawing.Point(15, ($y + 10))
 $btnApplyHosts.BackColor = [System.Drawing.Color]::FromArgb(37, 99, 63)
 $btnApplyHosts.ForeColor = [System.Drawing.Color]::White
 $btnApplyHosts.Add_Click({
-    $domains = @()
-    foreach ($cb in $script:HostsCheckBoxes) {
-        if ($cb.Checked) { $domains += $cb.Tag.Domains }
-    }
+    $domains = @(Get-SelectedHostsDomains)
     if ($domains.Count -eq 0) {
         $ans = [System.Windows.Forms.MessageBox]::Show(
             (T 'msg.hosts.noGroups'),
@@ -138,13 +135,8 @@ $btnLoadHosts = New-Object System.Windows.Forms.Button
 $btnLoadHosts.Size = New-Object System.Drawing.Size(160, 30)
 $btnLoadHosts.Location = New-Object System.Drawing.Point(355, ($y + 10))
 $btnLoadHosts.Add_Click({
-    $current = Get-HostsCurrentDomains
-    foreach ($cb in $script:HostsCheckBoxes) {
-        $blockDomains = $cb.Tag.Domains
-        $allPresent = $true
-        foreach ($d in $blockDomains) { if ($current -notcontains $d) { $allPresent = $false; break } }
-        $cb.Checked = $allPresent
-    }
+    $current = @(Get-HostsCurrentDomains)
+    Sync-HostsCheckBoxes -Current $current
     Write-Log "Hosts state loaded: $($current.Count) domain(s) currently blocked."
 })
 $hostsTab.Controls.Add($btnLoadHosts)

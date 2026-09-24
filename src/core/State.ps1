@@ -35,31 +35,50 @@ function Get-SelectionHostsDomains {
 # Raw values only; the window decides what they mean for each row. Loading is
 # single-source by design: only the first target channel is read.
 
-# A scheduled task's state through the Task Scheduler COM API, named the way
-# Get-ScheduledTask names it (Disabled, Ready, Running, Queued, Unknown), or
-# $null when there is no such task. Get-ScheduledTask goes through CIM and
-# costs about half a second per call, which made loading the state and the
-# preview wait a second or more; this takes milliseconds. Brave registers its
-# tasks in the root folder, the only one looked in. Writes still use the
-# ScheduledTasks cmdlets. If COM is unavailable, the cmdlet answers instead.
+# Brave's installer registers its tasks with a GUID after the name, such as
+# BraveSoftwareUpdateTaskMachineCore{8371973C-924B-4F39-9D29-C94A0E5C3CE0}, so
+# a name from tweaks\system.psd1 matches a task called exactly that, or that
+# followed by a {GUID}.
+function Test-BraveTaskName {
+    param([string]$Actual, [string]$Name)
+    return ($Actual -eq $Name -or ($Actual.StartsWith("$Name{") -and $Actual.EndsWith('}')))
+}
+
+# The tasks in the root folder, where Brave registers them, as Name and State,
+# the state named the way Get-ScheduledTask names it (Disabled, Ready,
+# Running, Queued, Unknown). Read through the Task Scheduler COM API:
+# Get-ScheduledTask goes through CIM and costs about half a second per call,
+# which made loading the state and the preview wait a second or more. If COM
+# is unavailable, the cmdlet answers instead. Writes use the cmdlets.
 $script:TaskStateNames = @{ 0 = 'Unknown'; 1 = 'Disabled'; 2 = 'Queued'; 3 = 'Ready'; 4 = 'Running' }
 $script:TaskRootFolder = $null
 
-function Get-BraveTaskState {
-    param([string]$Name)
+function Get-RootTaskList {
     try {
         if (-not $script:TaskRootFolder) {
             $service = New-Object -ComObject Schedule.Service
             $service.Connect()
             $script:TaskRootFolder = $service.GetFolder('\')
         }
+        # 1 = include hidden tasks.
+        $tasks = $script:TaskRootFolder.GetTasks(1)
+        return @(foreach ($task in $tasks) { [pscustomobject]@{ Name = $task.Name; State = $script:TaskStateNames[[int]$task.State] } })
     } catch {
-        $task = Get-ScheduledTask -TaskName $Name -ErrorAction SilentlyContinue
-        if (-not $task) { return $null }
-        return [pscustomobject]@{ Name = $Name; State = "$($task.State)" }
+        return @(foreach ($task in @(Get-ScheduledTask -TaskPath '\' -ErrorAction SilentlyContinue)) {
+            [pscustomobject]@{ Name = $task.TaskName; State = "$($task.State)" }
+        })
     }
-    try { $task = $script:TaskRootFolder.GetTask($Name) } catch { return $null }
-    return [pscustomobject]@{ Name = $Name; State = $script:TaskStateNames[[int]$task.State] }
+}
+
+# One configured task: Name, State, and Tasks, every task on this PC it
+# matches. State is Disabled only when all of them are. $null when none match.
+function Get-BraveTaskState {
+    param([string]$Name)
+    $matched = @(Get-RootTaskList | Where-Object { Test-BraveTaskName -Actual $_.Name -Name $Name })
+    if ($matched.Count -eq 0) { return $null }
+    $active = @($matched | Where-Object { $_.State -ne 'Disabled' })
+    $state = if ($active.Count -gt 0) { $active[0].State } else { 'Disabled' }
+    return [pscustomobject]@{ Name = $Name; State = $state; Tasks = $matched }
 }
 
 function Get-BfoMachineState {

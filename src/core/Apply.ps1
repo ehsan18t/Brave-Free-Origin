@@ -7,14 +7,31 @@
 # snapshot (see core\State.ps1), never the window, so the UI stays responsive
 # while tasks and services are stopped and reconfigured.
 
-# Unticking a task or service, and the full restore, both put it back to how
-# Brave installs it. Errors are left to the caller, which knows what to log.
+# Tasks are acted on under their real names, which carry the {GUID} Brave's
+# installer adds (see Get-BraveTaskState), in the root folder. Unticking a
+# task or service, and the full restore, both put it back to how Brave
+# installs it. Errors are left to the caller, which knows what to log.
+function Disable-BraveTask {
+    param([string]$Name)
+    $task = Get-BraveTaskState -Name $Name
+    if (-not $task) {
+        Write-BfoLog "Task $Name not present - skipped." 'INFO'
+        return
+    }
+    foreach ($match in $task.Tasks) {
+        Disable-ScheduledTask -TaskPath '\' -TaskName $match.Name -ErrorAction Stop | Out-Null
+        Write-BfoLog "DISABLED task $($match.Name)" 'OK'
+    }
+}
+
 function Enable-BraveTask {
     param([string]$Name)
     $task = Get-BraveTaskState -Name $Name
-    if ($task -and $task.State -eq 'Disabled') {
-        Enable-ScheduledTask -TaskName $Name -ErrorAction Stop | Out-Null
-        Write-BfoLog "ENABLED task $Name" 'OK'
+    if (-not $task) { return }
+    foreach ($match in $task.Tasks) {
+        if ($match.State -ne 'Disabled') { continue }
+        Enable-ScheduledTask -TaskPath '\' -TaskName $match.Name -ErrorAction Stop | Out-Null
+        Write-BfoLog "ENABLED task $($match.Name)" 'OK'
     }
 }
 
@@ -69,12 +86,8 @@ function Invoke-Apply {
 
     foreach ($t in $Selection.Tasks) {
         try {
-            if ($t.Checked) {
-                Disable-ScheduledTask -TaskName $t.Name -ErrorAction Stop | Out-Null
-                Write-BfoLog "DISABLED task $($t.Name)" 'OK'
-            } else {
-                Enable-BraveTask -Name $t.Name
-            }
+            if ($t.Checked) { Disable-BraveTask -Name $t.Name }
+            else { Enable-BraveTask -Name $t.Name }
         } catch {
             Write-BfoLog "Task $($t.Name): $_" 'WARN'
         }

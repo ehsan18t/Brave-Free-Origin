@@ -44,7 +44,7 @@ The row description is the string `policy.<Name>.description`.
 
 ## System (`system.psd1`)
 
-`ScheduledTasks` and `Services` are lists of entries such as `@{ Name = 'brave'; Effect = 'updates'; Impacts = @('noUpdates') }`, where `Name` is the exact Windows name and `Effect` and `Impacts` are tags. A ticked task is disabled; a ticked service is stopped and set to Disabled. Unticking re-enables the task, or resets the service to Manual. Descriptions are the strings `task.<Name>.description` and `service.<Name>.description`.
+`ScheduledTasks` and `Services` are lists of entries such as `@{ Name = 'brave'; Effect = 'updates'; Impacts = @('noUpdates') }`, where `Name` is the Windows name and `Effect` and `Impacts` are tags. Service names must match exactly. Brave's installer adds a GUID to its task names (`BraveSoftwareUpdateTaskMachineCore{8371973C-...}`), so a task `Name` matches the task of that name, or of that name followed by a `{GUID}`. A ticked task is disabled; a ticked service is stopped and set to Disabled. Unticking re-enables the task, or resets the service to Manual. Descriptions are the strings `task.<Name>.description` and `service.<Name>.description`.
 
 ## Hosts groups (`hosts.psd1`)
 

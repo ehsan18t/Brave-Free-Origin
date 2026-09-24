@@ -3,6 +3,10 @@
 #  Dot-sourced by Brave-Free-Origin.ps1; see the load order there.
 # ============================================================================
 
+# Both run on the background runspace (src\ui\Jobs.ps1) and take a selection
+# snapshot (see core\State.ps1), never the window, so the UI stays responsive
+# while tasks and services are stopped and reconfigured.
+
 # Unticking a task or service, and the full restore, both put it back to how
 # Brave installs it. Errors are left to the caller, which knows what to log.
 function Enable-BraveTask {
@@ -22,26 +26,25 @@ function Reset-BraveService {
     }
 }
 
-# Writes the current selection to every target channel: policies first, then
-# the search / new tab / startup overrides, then scheduled tasks and services.
-# Hosts blocks and scriptlets are not touched; their own tabs apply them.
+# Writes the selection to every target channel: policies first, then the
+# search / new tab / startup overrides, then scheduled tasks and services.
+# Hosts blocks and scriptlets are not touched; their own pages apply them.
 # Returns the counts for the confirmation message.
 function Invoke-Apply {
-    param([bool]$Backup)
+    param($Selection)
 
-    if ($Backup) { [void](Export-Backup) }
+    if ($Selection.Backup) { [void](Export-Backup) }
 
     $applied = 0
     $cleared = 0
-    foreach ($channel in $script:TargetChannels) {
+    foreach ($channel in $Selection.Channels) {
         $path = $script:Channels[$channel].Path
         Write-Log "--- Applying to channel: $channel ($path) ---"
-        foreach ($cb in $script:CheckBoxes) {
-            $p = $cb.Tag.Policy
-            if ($cb.Checked) {
+        foreach ($p in $Selection.Policies) {
+            if ($p.Checked) {
                 try {
-                    Set-PolicyValue -Path $path -Name $p.Name -Type $p.Type -Value $p.ApplyValue
-                    Write-Log "[$channel] SET $($p.Name) = $($p.ApplyValue)" 'OK'
+                    Set-PolicyValue -Path $path -Name $p.Name -Type $p.Type -Value $p.Value
+                    Write-Log "[$channel] SET $($p.Name) = $($p.Value)" 'OK'
                     $applied++
                 } catch {
                     Write-Log "[$channel] FAIL $($p.Name): $_" 'ERR'
@@ -58,15 +61,15 @@ function Invoke-Apply {
         # NewTabPageLocation/HomepageLocation/RestoreOnStartup ticks above.
         # Each helper clears its own values first, so unticking + Apply truly
         # removes them, and creates the policy key only when it has a value to write.
-        try { [void](Apply-SearchEngineOverride -Path $path) } catch { Write-Log "[$channel] Search override: $_" 'ERR' }
-        try { [void](Apply-NtpOverride          -Path $path) } catch { Write-Log "[$channel] NTP override: $_" 'ERR' }
-        try { [void](Apply-StartupOverride      -Path $path) } catch { Write-Log "[$channel] Startup override: $_" 'ERR' }
+        $overrides = $Selection.Overrides
+        try { [void](Apply-SearchEngineOverride -Path $path -Overrides $overrides) } catch { Write-Log "[$channel] Search override: $_" 'ERR' }
+        try { [void](Apply-NtpOverride          -Path $path -Overrides $overrides) } catch { Write-Log "[$channel] NTP override: $_" 'ERR' }
+        try { [void](Apply-StartupOverride      -Path $path -Overrides $overrides) } catch { Write-Log "[$channel] Startup override: $_" 'ERR' }
     }
 
-    foreach ($cb in $script:TaskCheckBoxes) {
-        $t = $cb.Tag
+    foreach ($t in $Selection.Tasks) {
         try {
-            if ($cb.Checked) {
+            if ($t.Checked) {
                 Disable-ScheduledTask -TaskName $t.Name -ErrorAction Stop | Out-Null
                 Write-Log "DISABLED task $($t.Name)" 'OK'
             } else {
@@ -77,15 +80,14 @@ function Invoke-Apply {
         }
     }
 
-    foreach ($cb in $script:ServiceCheckBoxes) {
-        $s = $cb.Tag
+    foreach ($s in $Selection.Services) {
         try {
             $svc = Get-Service -Name $s.Name -ErrorAction SilentlyContinue
             if (-not $svc) {
                 Write-Log "Service $($s.Name) not present - skipped." 'INFO'
                 continue
             }
-            if ($cb.Checked) {
+            if ($s.Checked) {
                 if ($svc.Status -eq 'Running') { Stop-Service -Name $s.Name -Force -ErrorAction SilentlyContinue }
                 Set-Service -Name $s.Name -StartupType Disabled -ErrorAction Stop
                 Write-Log "DISABLED service $($s.Name)" 'OK'
@@ -97,18 +99,19 @@ function Invoke-Apply {
         }
     }
 
-    Update-SelectionSummary
     Write-Log "Done. Applied $applied policies, cleared $cleared. Restart Brave to take effect." 'DONE'
 
     return [pscustomobject]@{ Applied = $applied; Cleared = $cleared }
 }
 
+# Puts the machine back to stock for the given channels. The window clears its
+# own selection afterwards.
 function Invoke-FullRestore {
-    param([bool]$Backup)
+    param([string[]]$Channels, [bool]$Backup)
 
     if ($Backup) { [void](Export-Backup) }
 
-    foreach ($channel in $script:TargetChannels) {
+    foreach ($channel in $Channels) {
         $path = $script:Channels[$channel].Path
         try {
             if (Test-Path $path) {
@@ -146,17 +149,5 @@ function Invoke-FullRestore {
         }
     }
 
-    Push-SuppressSelectionEvents
-    try {
-        $everyBox = @($script:CheckBoxes) + @($script:TaskCheckBoxes) + @($script:ServiceCheckBoxes) +
-                    @($script:HostsCheckBoxes) + @($script:ChkSearchOverride, $script:ChkNtpOverride, $script:ChkStartupOverride)
-        foreach ($cb in $everyBox) { $cb.Checked = $false }
-    } finally {
-        Pop-SuppressSelectionEvents
-    }
-    $script:ActiveProfile = 'None'
-    Update-OverrideControlStates
-    Update-SelectionSummary
-    Update-ConfigurationFilter
     Write-Log 'Full restore completed. Restart Brave to see stock behavior.' 'DONE'
 }

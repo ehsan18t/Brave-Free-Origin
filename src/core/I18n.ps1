@@ -17,18 +17,14 @@
 $script:EnglishStrings  = @{}
 $script:LocaleStrings   = @{}
 $script:CurrentLocale   = 'en-US'
-$script:I18nBindings    = New-Object System.Collections.ArrayList
-$script:LocFontBindings = New-Object System.Collections.ArrayList
 $script:LocaleDir       = Join-Path $script:AppRoot 'locales'
 $script:MaxLocaleValue  = 2000
 
-# Re-entrant guard for "the code is changing controls, not the user".
-# WinForms raises SelectedIndexChanged / CheckedChanged for programmatic
-# writes exactly as it does for clicks, so every bulk update (preset, import,
-# load current state, language switch) has to mute the handlers or the app
-# would conclude the user hand-picked a Custom loadout. Depth-counted because
-# these operations nest: a language switch relabels ComboBoxes, which
-# reselects, which would otherwise clear the flag too early.
+# Re-entrant guard for "the code is changing the selection, not the user".
+# A value picker raises SelectionChanged when code moves its bound index
+# exactly as it does for a click, so every bulk update (preset, import, load
+# current state) mutes the handlers or the app would conclude the user
+# hand-picked a Custom loadout. Depth-counted because these operations nest.
 $script:SuppressSelectionEvents = $false
 $script:SuppressDepth           = 0
 
@@ -72,16 +68,25 @@ function T {
 }
 
 # ---- Locale files -----------------------------------------------------------
+# Listing the languages only needs each file's meta block, so the strings are
+# neither parsed nor validated here: Set-BfoLocale does both for the one that
+# actually loads, and stays on English if it cannot. Cached, because startup
+# asks more than once.
+$script:AvailableLocales = $null
+
 function Get-AvailableLocales {
+    if ($script:AvailableLocales) { return $script:AvailableLocales }
     $list = @([pscustomobject]@{ Code = 'en-US'; Name = 'English'; Path = $null; Reviewed = $true })
     if (-not (Test-Path -LiteralPath $script:LocaleDir)) { return $list }
     foreach ($file in (Get-ChildItem -LiteralPath $script:LocaleDir -Filter '*.json' -File -ErrorAction SilentlyContinue | Sort-Object Name)) {
         $code = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
         if ($code -eq 'en-US') { continue }
+        # Only the small meta object is parsed; it holds no nested objects.
         $meta = $null
         try {
-            $probe = Import-LocaleFile -Path $file.FullName
-            if ($probe) { $meta = $probe.Meta }
+            $utf8 = New-Object System.Text.UTF8Encoding($false)
+            $match = [regex]::Match([System.IO.File]::ReadAllText($file.FullName, $utf8), '"meta"\s*:\s*(\{[^{}]*\})')
+            if ($match.Success) { $meta = $match.Groups[1].Value | ConvertFrom-Json }
         } catch { continue }
         if (-not $meta) { continue }
         $display = $code
@@ -93,17 +98,22 @@ function Get-AvailableLocales {
             Reviewed = [bool]$meta.reviewed
         }
     }
+    $script:AvailableLocales = $list
     return $list
 }
 
-function Import-LocaleFile {
+function Read-LocaleJson {
     param([string]$Path)
     if (-not (Test-Path -LiteralPath $Path)) { return $null }
     # Explicit UTF-8 decode. Get-Content -Encoding UTF8 behaves differently
     # between Windows PowerShell 5.1 and PowerShell 7, this does not.
     $utf8 = New-Object System.Text.UTF8Encoding($false)
-    $raw  = [System.IO.File]::ReadAllText($Path, $utf8)
-    $obj  = $raw | ConvertFrom-Json
+    return ([System.IO.File]::ReadAllText($Path, $utf8) | ConvertFrom-Json)
+}
+
+function Import-LocaleFile {
+    param([string]$Path)
+    $obj = Read-LocaleJson -Path $Path
     if (-not $obj -or -not $obj.strings) { return $null }
 
     if ($obj.strings -isnot [System.Management.Automation.PSCustomObject]) { return $null }

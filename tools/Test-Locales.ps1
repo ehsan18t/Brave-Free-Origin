@@ -55,13 +55,14 @@ if (-not $ScriptPath)  { $ScriptPath  = Join-Path $repoRoot 'Brave-Free-Origin.p
 if (-not $CatalogPath) { $CatalogPath = Join-Path $repoRoot 'src\strings\en-US.ps1' }
 if (-not $LocaleDir)   { $LocaleDir   = Join-Path $repoRoot 'locales' }
 
-# Everything the app runs or loads: the entry script, src\ and the tweak data.
+# Everything the app runs or loads: the entry script, src\ (including the
+# window XAML) and the tweak data.
 $appRoot = Split-Path -Parent $ScriptPath
 $sourceFiles = @((Get-Item -LiteralPath $ScriptPath).FullName)
 foreach ($dir in @('src', 'tweaks')) {
     $full = Join-Path $appRoot $dir
     if (Test-Path -LiteralPath $full) {
-        $sourceFiles += @(Get-ChildItem -LiteralPath $full -Recurse -File -Include '*.ps1', '*.psd1' |
+        $sourceFiles += @(Get-ChildItem -LiteralPath $full -Recurse -File -Include '*.ps1', '*.psd1', '*.xaml' |
                           Sort-Object FullName | ForEach-Object { $_.FullName })
     }
 }
@@ -207,10 +208,15 @@ foreach ($call in $calls) {
 if ($english.Count -eq 0) { throw 'No Add-Strings blocks found - catalog extraction failed.' }
 Write-Host "Embedded English catalog: $($english.Count) keys."
 
-# Every key the app asks for at runtime must exist in English.
+# Every key the app asks for at runtime must exist in English: T calls and
+# key parameters in script, {DynamicResource key} in the window XAML.
 $sourceText = ($sourceFiles | ForEach-Object { Get-Content -LiteralPath $_ -Raw }) -join "`n"
 $referenced = @{}
-foreach ($m in [regex]::Matches($sourceText, "(?:\bT\s+|Set-Loc(?:Tooltip)?\s+\`$[^\s]+\s+|Set-FlowTabTitleKey\s+\`$[^\s]+\s+|(?:Label|Name|Description)Key\s*=\s*)'([a-z][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)+)'")) {
+$keyPattern = '[a-z][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)+'
+foreach ($m in [regex]::Matches($sourceText, "(?:\bT\s+|Show-(?:Bfo|Scriptlet)Message\s+|(?:Label|Name|Description|Title|Busy|Fail|Filter)Key\s*=?\s*)'($keyPattern)'")) {
+    $referenced[$m.Groups[1].Value] = $true
+}
+foreach ($m in [regex]::Matches($sourceText, "\{DynamicResource\s+($keyPattern)\}")) {
     $referenced[$m.Groups[1].Value] = $true
 }
 foreach ($key in $referenced.Keys) {

@@ -12,13 +12,6 @@ $script:ScriptletUserDataRoots = [ordered]@{
 $script:ScriptletDisablePrefix = '! BFO disabled: '
 $script:ScriptletRules = @()
 $script:ScriptletVisibleRules = @()
-$script:ScriptletScanState = $null
-$script:ScriptletScanTimer = $null
-$script:ScriptletRenderState = $null
-$script:ScriptletRenderTimer = $null
-$script:ScriptletFilterTimer = $null
-$script:ScriptletCheckedKeys = @{}
-$script:SuppressScriptletStatusEvents = $false
 $script:ScriptletComponentNames = @{
     'iodkpdagapdfkphljnddpjlldadblomo' = 'uBlock filters'
     'adcocjohghhfpidemphmcmlmhnfgikei' = 'Brave Firstparty specific filters'
@@ -80,12 +73,15 @@ function Get-ScriptletRuleFromLine {
     return $trimmed
 }
 
+# Info is Get-ScriptletComponentInfo for File; a scan passes it in so it is
+# worked out once per file instead of once per rule.
 function ConvertTo-ScriptletRecord {
     param(
         [string]$File,
         [string]$Root,
         [string]$Line,
-        [int]$LineNumber
+        [int]$LineNumber,
+        $Info
     )
 
     # Nearly every line of a filter list is not a scriptlet rule. Any accepted
@@ -112,8 +108,11 @@ function ConvertTo-ScriptletRecord {
         $scriptlet = $body.Trim()
     }
 
-    $info = Get-ScriptletComponentInfo -File $File -Root $Root
+    $info = if ($Info) { $Info } else { Get-ScriptletComponentInfo -File $File -Root $Root }
+    # Picked is the table's check box. Hay is the lower-cased text the search
+    # box matches against, built once here instead of on every keystroke.
     return [pscustomobject]@{
+        Picked      = $false
         Enabled     = $enabled
         Domain      = $domain
         Scriptlet   = $scriptlet
@@ -121,9 +120,71 @@ function ConvertTo-ScriptletRecord {
         Source      = $info.Source
         ComponentId = $info.ComponentId
         Version     = $info.Version
+        SourceText  = "$($info.Source) $($info.Version)"
         File        = $File
         LineNumber  = $LineNumber
         Rule        = $rule
+        Hay         = ("$domain $scriptlet $arguments $($info.Source) $rule $File").ToLowerInvariant()
+    }
+}
+
+# Scans every filter list under Root in one go. Runs on the background
+# runspace: Progress (a synchronized hashtable shared with the window) gets the
+# status string key, its arguments and a 0-1000 value after every file, and a
+# Cancel flag set by the window stops the scan between files. Select-String
+# finds the few scriptlet lines in compiled code, so the multi-megabyte lists
+# are never walked line by line in script.
+function Get-ScriptletRecords {
+    param([string]$Root, [hashtable]$Progress)
+
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    $files = @(Get-ScriptletListFiles -Root $Root)
+    $totalBytes = [int64](@($files | Measure-Object Length -Sum).Sum)
+    if ($totalBytes -lt 1) { $totalBytes = 1 }
+    Write-Log "Scriptlet scan started: $Root ($($files.Count) list file(s), $([Math]::Round($totalBytes / 1MB, 2)) MB)" 'INFO'
+
+    $records = New-Object System.Collections.Generic.List[object]
+    $warnings = New-Object System.Collections.Generic.List[string]
+    $doneBytes = 0L
+    $cancelled = $false
+    for ($i = 0; $i -lt $files.Count; $i++) {
+        if ($Progress -and $Progress.Cancel) { $cancelled = $true; break }
+        $file = $files[$i]
+        $info = Get-ScriptletComponentInfo -File $file.FullName -Root $Root
+        if ($Progress) {
+            $percent = [int](($doneBytes * 1000L) / $totalBytes)
+            $Progress.Value = $percent
+            $Progress.Key = 'scriptlet.statusScanning'
+            $Progress.Args = @(($i + 1), $files.Count, $info.Source, $records.Count, [int]($percent / 10),
+                               [int]$stopwatch.Elapsed.TotalSeconds)
+        }
+        try {
+            $hits = Select-String -LiteralPath $file.FullName -Pattern '##+js(' -SimpleMatch -CaseSensitive -Encoding UTF8 -ErrorAction Stop
+            foreach ($hit in $hits) {
+                $record = ConvertTo-ScriptletRecord -File $file.FullName -Root $Root -Line $hit.Line -LineNumber $hit.LineNumber -Info $info
+                if ($record) { $records.Add($record) }
+            }
+        } catch {
+            $warnings.Add("Scriptlet scan failed $($file.FullName): $_")
+        }
+        $doneBytes += [int64]$file.Length
+    }
+    $stopwatch.Stop()
+    if ($Progress) { $Progress.Value = 1000 }
+
+    foreach ($warning in $warnings) { Write-Log $warning 'WARN' }
+    $seconds = [Math]::Round($stopwatch.Elapsed.TotalSeconds, 1)
+    if ($cancelled) {
+        Write-Log "Scriptlet scan cancelled after ${seconds}s." 'WARN'
+    } else {
+        Write-Log "Scriptlet scan complete: $($records.Count) rule(s) from $Root in ${seconds}s" 'OK'
+    }
+    return [pscustomobject]@{
+        Root      = $Root
+        FileCount = $files.Count
+        Records   = $records.ToArray()
+        Seconds   = $seconds
+        Cancelled = $cancelled
     }
 }
 
@@ -155,22 +216,6 @@ function Backup-ScriptletFile {
         Write-Log "Scriptlet backup created: $backup" 'OK'
     }
     return $backup
-}
-
-function Test-ScriptletAdvancedWriteAllowed {
-    if (-not $script:ChkScriptletAdvanced -or -not $script:ChkScriptletAdvanced.Checked) {
-        Show-BfoMessage 'msg.scriptlet.locked' -TitleKey 'msg.title.scriptlet' -Icon Warning
-        return $false
-    }
-
-    # Brave may rewrite or cache the lists while running; editing them then is
-    # allowed, but only after the user confirms.
-    $braveProcesses = @(Get-Process -Name brave -ErrorAction SilentlyContinue)
-    if ($braveProcesses.Count -gt 0) {
-        return (Show-BfoMessage 'msg.scriptlet.braveRunning' @($braveProcesses.Count) -TitleKey 'msg.title.scriptlet' -Icon Warning -YesNo)
-    }
-
-    return $true
 }
 
 # Brave's filter lists are edited in place without disturbing anything else:
@@ -288,9 +333,9 @@ function Restore-AllScriptletBackups {
 }
 
 function Export-ScriptletDisabledPreferences {
-    param([string]$File)
+    param([string]$File, [object[]]$Rules)
 
-    $disabled = @($script:ScriptletRules | Where-Object { -not $_.Enabled } | Sort-Object Rule -Unique)
+    $disabled = @($Rules | Where-Object { -not $_.Enabled } | Sort-Object Rule -Unique)
     $payload = [ordered]@{
         version       = '1.9'
         exported      = (Get-Date -Format 's')

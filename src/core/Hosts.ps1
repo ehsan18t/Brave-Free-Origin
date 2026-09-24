@@ -38,14 +38,6 @@ function Get-HostsCurrentDomains {
     return (Read-HostsFile).Domains
 }
 
-# Ticks each hosts group whose every domain is already in the managed block.
-function Sync-HostsCheckBoxes {
-    param([string[]]$Current)
-    foreach ($cb in $script:HostsCheckBoxes) {
-        $cb.Checked = (@($cb.Tag.Domains | Where-Object { $Current -notcontains $_ }).Count -eq 0)
-    }
-}
-
 function Set-HostsBlockDomains {
     param([string[]]$Domains)
     [void](Backup-HostsFile)
@@ -81,16 +73,11 @@ function Clear-HostsBlock {
     Write-Log 'Hosts sentinel block removed.' 'OK'
 }
 
-function Get-SelectedHostsDomains {
-    $domains = @()
-    foreach ($cb in $script:HostsCheckBoxes) {
-        if ($cb.Checked) { $domains += $cb.Tag.Domains }
-    }
-    return @($domains | Sort-Object -Unique)
-}
-
+# Desired is every domain of the ticked groups; GroupCount is how many groups
+# are ticked, for the report header only.
 function New-HostsPlanReport {
-    $desired = @(Get-SelectedHostsDomains)
+    param([string[]]$Desired, [int]$GroupCount)
+    $desired = @($Desired | Where-Object { $_ } | Sort-Object -Unique)
     $current = @(Get-HostsCurrentDomains)
     $toAdd = @($desired | Where-Object { $current -notcontains $_ })
     $toKeep = @($desired | Where-Object { $current -contains $_ })
@@ -101,7 +88,7 @@ function New-HostsPlanReport {
     [void]$report.AppendLine("Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')")
     [void]$report.AppendLine("File: $($script:HostsFile)")
     [void]$report.AppendLine('')
-    [void]$report.AppendLine("Selected groups: $(@($script:HostsCheckBoxes | Where-Object { $_.Checked }).Count)")
+    [void]$report.AppendLine("Selected groups: $GroupCount")
     [void]$report.AppendLine("Current managed domains: $($current.Count)")
     [void]$report.AppendLine("Desired managed domains: $($desired.Count)")
     [void]$report.AppendLine('')

@@ -12,12 +12,16 @@ $script:SearchOverrideValueNames = @(
     'DefaultSearchProviderSuggestURL'
 )
 
+# The three overrides read the Overrides part of a selection snapshot (see
+# core\State.ps1): SearchEnabled, EngineId, CustomSearchUrl, NtpEnabled,
+# DestinationId, NtpCustomUrl, StartupEnabled, StartupModeId and StartupUrls.
 function Get-DesiredSearchOverride {
+    param($Overrides)
     $desired = [ordered]@{}
-    if (-not $script:ChkSearchOverride.Checked) { return $desired }
+    if (-not $Overrides.SearchEnabled) { return $desired }
 
-    $engineId = Get-ComboId -Combo $script:CmbSearchEngine -Ids $script:SearchEngineIds
-    $eng = $script:SearchEngines[$engineId]
+    $eng = $script:SearchEngines[$Overrides.EngineId]
+    if (-not $eng) { throw "Unknown search engine '$($Overrides.EngineId)'." }
     $url = $eng.URL
     $sug = $eng.Suggest
     # ProviderName, not the translated label: this string is written to the
@@ -26,7 +30,7 @@ function Get-DesiredSearchOverride {
     $keyword = $eng.Keyword
 
     if ($eng.IsCustom) {
-        $url = $script:TxtCustomSearchUrl.Text.Trim()
+        $url = "$($Overrides.CustomSearchUrl)".Trim()
         if ([string]::IsNullOrWhiteSpace($url)) { throw 'Custom search URL is empty.' }
         if ($url -notmatch '\{searchTerms\}') { throw 'Custom search URL must contain {searchTerms}.' }
         $name = 'Custom Search'
@@ -41,28 +45,31 @@ function Get-DesiredSearchOverride {
 }
 
 function Get-DesiredNtpOverride {
+    param($Overrides)
     $desired = [ordered]@{}
-    if (-not $script:ChkNtpOverride.Checked) { return $desired }
+    if (-not $Overrides.NtpEnabled) { return $desired }
 
-    $engineId = Get-ComboId -Combo $script:CmbSearchEngine -Ids $script:SearchEngineIds
-    $engineHome = if ($script:SearchEngines[$engineId].IsCustom) { '' } else { $script:SearchEngines[$engineId].Home }
-    $url = Resolve-Destination -DestinationId (Get-ComboId -Combo $script:CmbNtpDest -Ids $script:DestinationIds) -CustomUrl $script:TxtNtpCustomUrl.Text -SearchEngineHome $engineHome
+    $engine = $script:SearchEngines[$Overrides.EngineId]
+    $engineHome = if (-not $engine -or $engine.IsCustom) { '' } else { $engine.Home }
+    $url = Resolve-Destination -DestinationId $Overrides.DestinationId -CustomUrl "$($Overrides.NtpCustomUrl)" -SearchEngineHome $engineHome
     if ([string]::IsNullOrWhiteSpace($url)) { throw 'New tab override has no resolvable URL.' }
     $desired['NewTabPageLocation'] = @{ Type='STRING'; Value=$url }
     return $desired
 }
 
 function Get-DesiredStartupOverride {
-    if (-not $script:ChkStartupOverride.Checked) {
+    param($Overrides)
+    if (-not $Overrides.StartupEnabled) {
         return [pscustomobject]@{ Enabled = $false; ModeId = $null; Code = $null; Urls = @() }
     }
 
-    $modeId = Get-ComboId -Combo $script:CmbStartupMode -Ids $script:StartupModeIds
+    $modeId = $Overrides.StartupModeId
     $mode = $script:StartupModes[$modeId]
+    if (-not $mode) { throw "Unknown startup mode '$modeId'." }
     $urls = @()
     if ($mode.UsesURL) {
         $urls = if ($mode.FixedURL) { @($mode.FixedURL) }
-                else { @($script:TxtStartupUrl.Text -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
+                else { @("$($Overrides.StartupUrls)" -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
         if ($urls.Count -eq 0) { throw 'Startup override has no URL.' }
     }
     return [pscustomobject]@{ Enabled = $true; ModeId = $modeId; Code = $mode.Code; Urls = $urls }
@@ -104,9 +111,9 @@ function Resolve-Destination {
 # cannot drift apart. Each clears its values first so unticking + Apply truly
 # removes them, and a selection that cannot be applied is logged and skipped.
 function Apply-SearchEngineOverride {
-    param([string]$Path)
+    param([string]$Path, $Overrides)
     foreach ($n in $script:SearchOverrideValueNames) { [void](Remove-PolicyValue -Path $Path -Name $n) }
-    try { $desired = Get-DesiredSearchOverride }
+    try { $desired = Get-DesiredSearchOverride -Overrides $Overrides }
     catch { Write-Log "Search override skipped: $($_.Exception.Message)" 'WARN'; return $false }
     if ($desired.Count -eq 0) { return $false }
 
@@ -116,9 +123,9 @@ function Apply-SearchEngineOverride {
 }
 
 function Apply-NtpOverride {
-    param([string]$Path)
+    param([string]$Path, $Overrides)
     [void](Remove-PolicyValue -Path $Path -Name 'NewTabPageLocation')
-    try { $desired = Get-DesiredNtpOverride }
+    try { $desired = Get-DesiredNtpOverride -Overrides $Overrides }
     catch { Write-Log "NTP override skipped: $($_.Exception.Message)" 'WARN'; return $false }
     if ($desired.Count -eq 0) { return $false }
 
@@ -128,10 +135,10 @@ function Apply-NtpOverride {
 }
 
 function Apply-StartupOverride {
-    param([string]$Path)
+    param([string]$Path, $Overrides)
     [void](Remove-PolicyValue -Path $Path -Name 'RestoreOnStartup')
     try { Remove-Item -Path (Join-Path $Path 'RestoreOnStartupURLs') -Recurse -Force -ErrorAction Stop } catch {}
-    try { $startup = Get-DesiredStartupOverride }
+    try { $startup = Get-DesiredStartupOverride -Overrides $Overrides }
     catch { Write-Log "Startup override skipped: $($_.Exception.Message)" 'WARN'; return $false }
     if (-not $startup.Enabled) { return $false }
 

@@ -16,20 +16,98 @@ Add-Strings @{
     'header.allChannels'      = 'All installed channels'
     'header.braveDetected'    = 'Brave detected: {0}'
     'header.hives'            = '-> {0} ({1} hives)'
-    'header.language'         = 'Language:'
     'header.originNote'       = 'Context: Brave described Origin on April 16, 2026 as a minimalist build, then put that stripped-down idea behind a paywall. This is the free local version.'
     'header.subtitle'         = 'Strip out the AI, crypto, VPN, promo junk, and background clutter Brave stuffed in, then tune it for a lighter desktop footprint.'
-    'header.targetChannel'    = 'Target channel:'
     'header.unreviewedLocale' = 'community translation, unreviewed'
+}
+
+# ---- Window: navigation, home page, bottom bar, activity --------------------------
+Add-Strings @{
+    'activity.clear'       = 'Clear'
+    'activity.copy'        = 'Copy log'
+    'activity.title'       = 'Activity'
+    'bar.activity'         = 'Activity log'
+    'bar.noPending'        = 'Everything is applied'
+    'bar.pending'          = '{0} change(s) not applied yet'
+    'bar.target'           = 'Target'
+    'busy.applying'        = 'Applying to Brave...'
+    'busy.hosts'           = 'Updating the hosts file...'
+    'busy.loading'         = 'Reading the current state of this PC...'
+    'busy.preview'         = 'Building the preview...'
+    'busy.restoring'       = 'Restoring stock behavior...'
+    'busy.scriptlets'      = 'Working on the scriptlet lists...'
+    'busy.starting'        = 'Starting up...'
+    'busy.verify'          = 'Reading the registry back...'
+    'busy.working'         = 'Working...'
+    'home.admin'           = 'Running as administrator'
+    'home.modesTitle'      = 'Choose a mode'
+    'home.reviewSelected'  = 'Review selected'
+    'home.selectionTitle'  = 'Your selection'
+    'home.statMode'        = 'Mode'
+    'home.statPolicies'    = 'Policies'
+    'home.statServices'    = 'Services'
+    'home.statTasks'       = 'Scheduled tasks'
+    'nav.advanced'         = 'Advanced'
+    'nav.home'             = 'Home'
+    'nav.policies'         = 'Policies'
+    'nav.search'           = 'Find a setting'
+    'nav.settings'         = 'Settings'
+    'nav.systemNetwork'    = 'System and network'
+    'search.count'         = '{0} setting(s)'
+    'search.selectedTitle' = 'Selected settings'
+    'search.title'         = 'Results for "{0}"'
+    'toast.applied'        = '{0} applied'
+    'toast.appliedText'    = 'Set {0} policies and cleared {1}. Restart Brave to see the changes.'
+    'toast.busyClose'      = 'Wait for the current task to finish, or close again to quit anyway.'
+    'toast.busyTitle'      = 'Still working'
+    'toast.exported'       = 'Config exported'
+    'toast.loaded'         = 'Current state loaded'
+    'toast.loadedText'     = 'Every page now shows what this PC already has.'
+    'toast.presetHosts'    = 'This mode also picks hosts groups. Write those from the Hosts page.'
+    'toast.presetLoaded'   = '{0} loaded'
+    'toast.presetText'     = 'Review the pages if you like, then Apply to Brave.'
+}
+
+# ---- Settings page -----------------------------------------------------------------
+Add-Strings @{
+    'settings.about'            = 'About'
+    'settings.appearance'       = 'Appearance'
+    'settings.backupDesc'       = 'Saves a .reg export of the current Brave policies to Documents\Brave-Free-Origin-Backups before every apply and full restore.'
+    'settings.backupFolder'     = 'Backup folder'
+    'settings.backupFolderDesc' = 'Registry and hosts backups, saved reports and exported configs.'
+    'settings.channel'          = 'Brave channel to change'
+    'settings.config'           = 'Configuration'
+    'settings.configDesc'       = 'Save your selection to a JSON file, or load one. Loading writes nothing until you apply.'
+    'settings.configFile'       = 'Config file'
+    'settings.language'         = 'Language'
+    'settings.languageDesc'     = 'Reports and the activity log stay in English, so they can go into bug reports.'
+    'settings.loadDesc'         = 'Switch on exactly what this PC already has: policies, tasks, services, the hosts block and overrides.'
+    'settings.open'             = 'Open'
+    'settings.policyDesc'       = 'See what Brave itself reports for every policy.'
+    'settings.restore'          = 'Restore'
+    'settings.restoreDesc'      = 'Removes every Brave policy and the hosts block, and re-enables Brave update tasks and services.'
+    'settings.target'           = 'Target'
+    'settings.theme'            = 'Theme'
+    'settings.themeDesc'        = 'Follow Windows, or pick light or dark.'
+    'settings.verifyDesc'       = 'Read the registry back and compare it with your selection.'
+    'settings.version'          = 'Version {0}'
+    'theme.dark'                = 'Dark'
+    'theme.light'               = 'Light'
+    'theme.system'              = 'Use Windows setting'
+}
+
+# ---- Dialog buttons ------------------------------------------------------------------
+Add-Strings @{
+    'dialog.cancel' = 'Cancel'
+    'dialog.no'     = 'No'
+    'dialog.ok'     = 'OK'
+    'dialog.yes'    = 'Yes'
 }
 
 # ---- Mode deck ---------------------------------------------------------------
 Add-Strings @{
-    'mode.intro'    = 'Pick a one-click mode, then tweak the tabs below if you want to go deeper.'
-    'mode.label'    = 'Mode: {0}'
-    'mode.policies' = 'Policies: {0} / {1}'
-    'mode.risk'     = 'Risk: {0}'
-    'mode.system'   = 'System: {0} tasks, {1} services'
+    'mode.intro' = 'Pick a one-click mode, then fine-tune any page on the left if you want to go deeper. Nothing is written until you apply.'
+    'mode.risk'  = 'Risk: {0}'
 }
 
 # ---- Presets -----------------------------------------------------------------
@@ -38,7 +116,7 @@ Add-Strings @{
     'preset.CurrentState.description'   = 'Read from this PC. Shows what is already disabled right now.'
     'preset.CurrentState.name'          = 'Current State'
     'preset.CurrentState.risk'          = 'Read only'
-    'preset.Custom.description'         = 'Hand-picked mix. Use the tabs below to build your own Brave loadout.'
+    'preset.Custom.description'         = 'Hand-picked mix. Use the pages on the left to build your own Brave loadout.'
     'preset.Custom.name'                = 'Custom'
     'preset.Custom.risk'                = 'Depends on your picks'
     'preset.MaxPerformance.description' = 'Full fusion mode: Origin Mode, Privacy + Boost, and the strong privacy set combined, plus a few extra UI trims. This is the closest thing to an all-in gamer build.'
@@ -64,15 +142,12 @@ Add-Strings @{
     'preset.Recommended.risk'           = 'Low risk'
 }
 
-# ---- Configuration filter ----------------------------------------------------
+# ---- Search and setting lists ------------------------------------------------
 Add-Strings @{
-    'filter.clear'         = 'Clear'
-    'filter.label'         = 'Filter configuration:'
-    'filter.matches'       = '{0} of {1} settings shown'
-    'filter.noMatches'     = 'No settings match this filter.'
-    'filter.placeholder'   = 'Type to filter every setting (name, description, category)...'
+    'filter.noMatches'     = 'No settings match this search.'
+    'filter.placeholder'   = 'Searches every setting on every page: name, description, category, domains.'
     'filter.selectedOnly'  = 'Selected only'
-    'filter.tabCount'      = '{0} ({1})'
+    'list.selectedCount'   = '{0} of {1} selected'
     'policyTab.selectAll'  = 'Select all'
     'policyTab.selectNone' = 'Select none'
 }
@@ -128,13 +203,13 @@ Add-Strings @{
     'policy.BraveWebDiscoveryEnabled.description'                     = 'Disable Web Discovery Project search index contribution.'
     'policy.BrowserLabsEnabled.description'                           = 'Hide the Labs / experimental features icon in the toolbar.'
     'policy.BrowserSignin.description'                                = 'Fully disable sign-in UI (0). 1=allow, 2=force.'
-    'policy.BuiltInDnsClientEnabled.description'                      = 'Use OS resolver instead of async DoH client. Only tick if you want OS DNS.'
+    'policy.BuiltInDnsClientEnabled.description'                      = 'Use OS resolver instead of async DoH client. Only turn on if you want OS DNS.'
     'policy.ChromeCleanupEnabled.description'                         = 'Disable the software-cleanup scanner (harmless on Brave).'
     'policy.ChromeCleanupReportingEnabled.description'                = 'Disable reporting from the cleanup scanner.'
     'policy.ChromeVariations.description'                             = 'Opt out of all Chromium field trials/experiments (2). 1=critical only, 0=all.'
     'policy.CloudPrintSubmitEnabled.description'                      = 'Disable legacy cloud-print submissions.'
     'policy.CloudReportingEnabled.description'                        = 'Disable enterprise cloud reporting.'
-    'policy.ComponentUpdatesEnabled.description'                      = 'Disable Chromium component updates (e.g. Widevine). Only tick if you know what this breaks.'
+    'policy.ComponentUpdatesEnabled.description'                      = 'Disable Chromium component updates (e.g. Widevine). Only turn on if you know what this breaks.'
     'policy.CreateThemesSettings.description'                         = 'Disable AI-generated themes.'
     'policy.DefaultBraveAdblockSetting.description'                   = 'Force default ad-blocking to Block (2). 1=Allow.'
     'policy.DefaultBraveFingerprintingV2Setting.description'          = 'Set fingerprint protection to Standard (3). 1=Off.'
@@ -148,7 +223,7 @@ Add-Strings @{
     'policy.GenAiDefaultSettings.description'                         = 'Disable ALL upstream Chromium GenAI features (2).'
     'policy.HardwareAccelerationModeEnabled.choice.disable'           = 'Disable (0)'
     'policy.HardwareAccelerationModeEnabled.choice.enable'            = 'Enable (1)'
-    'policy.HardwareAccelerationModeEnabled.description'              = 'GPU hardware acceleration. Enabled by default in every mode. Pick Disable (0) to fix GPU driver glitches, artifacts or crashes. Untick the box to leave Brave in control.'
+    'policy.HardwareAccelerationModeEnabled.description'              = 'GPU hardware acceleration. Enabled by default in every mode. Pick Disable (0) to fix GPU driver glitches, artifacts or crashes. Turn it off to leave Brave in control.'
     'policy.HelpMeWriteSettings.description'                          = 'Disable "Help me write" compose features.'
     'policy.HighEfficiencyModeEnabled.description'                    = 'Memory Saver: sleep inactive tabs to reclaim RAM/CPU.'
     'policy.HistorySearchSettings.description'                        = 'Disable AI-powered history search.'
@@ -234,7 +309,9 @@ Add-Strings @{
     'hostsTab.open'                  = 'Open hosts file'
     'hostsTab.preview'               = 'Preview hosts'
     'hostsTab.remove'                = 'Remove hosts block'
-    'hostsTab.warn'                  = 'Independent of the "Apply to Brave" button. Use the buttons in this tab to apply or remove the hosts block.'
+    'hostsTab.inSync'                = 'The hosts file matches these groups.'
+    'hostsTab.pending'               = '{0} group(s) changed and not written to the hosts file yet.'
+    'hostsTab.warn'                  = 'Independent of the "Apply to Brave" button. Use the buttons on this page to apply or remove the hosts block.'
 }
 
 # ---- Scriptlet manager -------------------------------------------------------
@@ -249,39 +326,33 @@ Add-Strings @{
     'scriptlet.col.arguments'   = 'Arguments'
     'scriptlet.col.domain'      = 'Domain'
     'scriptlet.col.line'        = 'Line'
-    'scriptlet.col.pick'        = 'Pick / status'
     'scriptlet.col.rawRule'     = 'Raw rule'
     'scriptlet.col.scriptlet'   = 'Scriptlet'
     'scriptlet.col.source'      = 'Source / version'
+    'scriptlet.col.status'      = 'Status'
     'scriptlet.disableChecked'  = 'Disable checked'
     'scriptlet.disabledOnly'    = 'Show disabled by this app only'
     'scriptlet.enableChecked'   = 'Enable checked'
     'scriptlet.exportCsv'       = 'Export visible CSV'
     'scriptlet.exportPrefs'     = 'Export disabled prefs'
-    'scriptlet.filter'          = 'Filter'
-    'scriptlet.footer'          = 'Tip: if Scan finds nothing, use Browse and select the folder named "User Data" under your Brave profile. This feature edits component filter lists only when Advanced edit mode is ticked.'
     'scriptlet.importPrefs'     = 'Import + reapply prefs'
+    'scriptlet.more'            = 'More'
     'scriptlet.intro'           = 'Optional advanced tool: view Brave''s built-in adblock scriptlet rules from component filter lists. Editing is manual-only, never part of presets, and never triggered by Apply to Brave.'
     'scriptlet.openFolder'      = 'Open folder'
     'scriptlet.restoreAll'      = 'Restore all backups'
     'scriptlet.restoreSelected' = 'Restore selected file'
     'scriptlet.risk'            = 'Risk: disabling scriptlets can break adblocking, anti-annoyance fixes, cookie banners, video sites, or site compatibility. Brave updates may replace component versions; export disabled preferences and reapply after updates if needed.'
     'scriptlet.rootLabel'       = 'Brave User Data folder:'
-    'scriptlet.renderDone'      = ' Render completed in {0}s.'
     'scriptlet.scan'            = 'Scan'
     'scriptlet.scanDone'        = ' Scan completed in {0}s.'
-    'scriptlet.searchLabel'     = 'Search/filter:'
+    'scriptlet.searchPlaceholder' = 'Search domains, scriptlets, arguments and rules'
     'scriptlet.state.disabled'  = 'Disabled'
     'scriptlet.state.enabled'   = 'Enabled'
     'scriptlet.statusFinding'   = 'Finding Brave scriptlet list files...'
-    'scriptlet.statusFound'     = 'Found {0} list file(s). Scanning in chunks...'
     'scriptlet.statusIdle'      = 'Scan a Brave User Data folder to list internal scriptlet rules.'
-    'scriptlet.statusRender0'   = 'Rendering 0 / {0} visible scriptlet row(s)...'
-    'scriptlet.statusRenderN'   = 'Rendering {0} scriptlet row(s)...'
-    'scriptlet.statusRendering' = 'Rendering {0} / {1} visible scriptlet row(s)... {2}s'
+    'scriptlet.statusCancelled' = 'Scan cancelled.'
     'scriptlet.statusScanning'  = 'Scanning file {0} / {1}: {2}. Found {3} rule(s). {4}%. {5}s'
     'scriptlet.statusShowing'   = 'Showing {0} / {1}. Enabled: {2}. Disabled: {3}. Checked: {4}.'
-    'scriptlet.statusStarting'  = 'starting...'
     'scriptlet.tipAffectDupes'  = 'Brave lists can contain the same scriptlet rule multiple times. Leave this on unless you only want the exact selected line.'
     'scriptlet.tipCheckFiltered' = 'Checks every row matching the active search/show filters, including rows not currently painted in the table.'
     'scriptlet.viewSelected'    = 'View selected'
@@ -310,10 +381,10 @@ Add-Strings @{
     'searchTab.chkNtp'            = 'Override new tab page (writes NewTabPageLocation policy)'
     'searchTab.chkSearch'         = 'Force a default search engine (writes DefaultSearchProvider* policies)'
     'searchTab.chkStartup'        = 'Override startup behavior (writes RestoreOnStartup + RestoreOnStartupURLs policies)'
-    'searchTab.conflictNote'      = 'Note: this tab is processed AFTER the Performance / Startup tab, so it cleanly overrides any ''NewTabPageLocation'' / ''HomepageLocation'' / ''RestoreOnStartup'' values set there. Untick + Apply removes the override and lets your Performance tab values (or stock Brave) take back over.'
+    'searchTab.conflictNote'      = 'These overrides are written AFTER the Performance / Startup policies, so they cleanly override any ''NewTabPageLocation'' / ''HomepageLocation'' / ''RestoreOnStartup'' values set there. Turning one off + Apply removes the override and lets your Performance / Startup values (or stock Brave) take back over.'
     'searchTab.customLabel'       = 'Custom search URL:'
     'searchTab.engineLabel'       = 'Engine:'
-    'searchTab.intro'             = 'Pick the omnibox search engine and what opens when Brave launches / when you open a new tab. Each section is independent and only fires when its checkbox is ticked. Unticking + Apply removes the override.'
+    'searchTab.intro'             = 'Pick the omnibox search engine and what opens when Brave launches / when you open a new tab. Each section is independent and only takes effect when its switch is on. Turning it off + Apply removes the override.'
     'searchTab.modeLabel'         = 'Mode:'
     'searchTab.ntpCustomLabel'    = 'Custom URL:'
     'searchTab.ntpOpenLabel'      = 'Open:'
@@ -345,9 +416,7 @@ Add-Strings @{
     'action.backup'      = 'Backup existing policies before applying'
     'action.fullRestore' = 'Full restore / stock'
     'action.preview'     = 'Preview changes'
-    'util.close'         = 'Close'
     'util.export'        = 'Export config'
-    'util.flow'          = 'Pick mode -> tweak -> Preview -> Apply -> restart Brave -> Verify'
     'util.import'        = 'Import config'
     'util.loadState'     = 'Load current state'
     'util.openPolicy'    = 'Open brave://policy'
@@ -380,10 +449,9 @@ Add-Strings @{
 
 # ---- Dialogs -----------------------------------------------------------------
 Add-Strings @{
-    'msg.apply.done'                  = "Mode: {0}`r`nApplied {1} policies, cleared {2}.`r`n`r`nRestart Brave to see changes.`r`nVerify at: brave://policy"
     'msg.braveMissing'                = 'Brave not found on this machine.'
     'msg.config.badJson'              = 'Bad JSON: {0}'
-    'msg.config.imported'             = "Config loaded into checkboxes.`r`nClick 'Apply to Brave' (and the Hosts tab if needed) to commit."
+    'msg.config.imported'             = 'Nothing is written until you click Apply to Brave (and Apply hosts blocks on the Hosts page, if needed).'
     'msg.failed'                      = 'Failed: {0}'
     'msg.hosts.applied'               = "Hosts file updated. {0} domain(s) blocked.`r`nDNS cache flushed."
     'msg.hosts.confirmApply'          = "About to add {0} entries to:`r`n{1}`r`n`r`nA timestamped backup will be saved first. Continue?"
@@ -404,7 +472,7 @@ Add-Strings @{
     'msg.scriptlet.enableFailed'      = "Enable failed:`r`n{0}"
     'msg.scriptlet.exportFailed'      = "Export failed:`r`n{0}"
     'msg.scriptlet.folderMissing'     = 'Folder not found. Use Browse to choose the correct Brave User Data folder.'
-    'msg.scriptlet.locked'            = "Editing Brave's internal filter-list files is disabled.`r`n`r`nTick 'Advanced edit mode' in the Scriptlets tab first."
+    'msg.scriptlet.locked'            = "Editing Brave's internal filter-list files is disabled.`r`n`r`nTurn on 'Advanced edit mode' on the Scriptlets page first."
     'msg.scriptlet.noFiles'           = "No Brave filter-list files were found in:`r`n{0}`r`n`r`nUse Browse if your Brave User Data folder lives somewhere else."
     'msg.scriptlet.noRules'           = "No Brave scriptlet rules were found in:`r`n{0}`r`n`r`nUse Browse if your Brave User Data folder lives somewhere else."
     'msg.scriptlet.noRulesLoaded'     = 'Scan first; there are no scriptlet rules loaded.'

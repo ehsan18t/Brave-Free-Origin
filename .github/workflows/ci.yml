@@ -33,6 +33,20 @@ jobs:
           if ($failed) { exit 1 }
           "Windows PowerShell $($PSVersionTable.PSVersion) parse OK ($($files.Count) files)"
 
+      # The window is loose XAML parsed at startup, so a typo in a template
+      # would only surface when someone launches the app. Parse it exactly the
+      # way src\ui\Window.ps1 does: Theme.xaml merged in through a file URI.
+      - name: Load window XAML (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
+          $xamlDir = (Resolve-Path 'src\ui\xaml').Path
+          $text = [System.IO.File]::ReadAllText((Join-Path $xamlDir 'Window.xaml'))
+          $text = $text.Replace('__THEME_URI__', ([Uri](Join-Path $xamlDir 'Theme.xaml')).AbsoluteUri)
+          $window = [System.Windows.Markup.XamlReader]::Parse($text)
+          if (-not $window.FindName('NavList')) { throw 'Window.xaml parsed, but NavList is missing.' }
+          'Window XAML OK'
+
       - name: Parse tooling scripts (Windows PowerShell 5.1)
         shell: powershell
         run: |
@@ -121,11 +135,12 @@ jobs:
       # Windows PowerShell 5.1 decodes a BOM-less .ps1 with the system ANSI
       # code page. Any non-ASCII byte in the app would mojibake on machines
       # whose code page differs from the author's, so translated text must
-      # live in locales\*.json and every script or data file must stay pure ASCII.
+      # live in locales\*.json and every script, data or XAML file must stay
+      # pure ASCII (XAML writes icon glyphs as &#xE713; references).
       - name: Enforce ASCII-only application files
         shell: pwsh
         run: |
-          $files = @(Get-Item 'Brave-Free-Origin.ps1') + @(Get-ChildItem 'src', 'tweaks' -Recurse -File -Include '*.ps1', '*.psd1' -ErrorAction SilentlyContinue)
+          $files = @(Get-Item 'Brave-Free-Origin.ps1') + @(Get-ChildItem 'src', 'tweaks' -Recurse -File -Include '*.ps1', '*.psd1', '*.xaml' -ErrorAction SilentlyContinue)
           foreach ($file in $files) {
             $name = Resolve-Path -Relative $file.FullName
             $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
@@ -212,7 +227,9 @@ jobs:
             'LICENSE',
             'locales/en-US.json',
             'locales/zh-CN.json',
-            'images/screenshot.png'
+            'images/screenshot.png',
+            'src/ui/xaml/Theme.xaml',
+            'src/ui/xaml/Window.xaml'
           )
           # Every file the entry script dot-sources must ship, or the app cannot start.
           $main = Get-Content 'Brave-Free-Origin.ps1' -Raw

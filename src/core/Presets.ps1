@@ -1,5 +1,5 @@
 # ============================================================================
-#  One-click modes: preset policy lists, payloads and applying a preset to the checkboxes.
+#  One-click modes: preset names, policy lists and payloads.
 #  Dot-sourced by Brave-Free-Origin.ps1; see the load order there.
 # ============================================================================
 
@@ -61,55 +61,4 @@ function Get-PresetPayload {
         Services = $(if ($definition.Services) { @($script:Services.Name) }       else { @() })
         Hosts    = @($definition.Hosts | Where-Object { $_ })
     }
-}
-
-function Update-SelectionSummary {
-    if (-not $script:ModeLabel) { return }
-
-    $selectedPolicies = @($script:CheckBoxes | Where-Object { $_.Checked })
-    $selectedTasks = @($script:TaskCheckBoxes | Where-Object { $_.Checked })
-    $selectedServices = @($script:ServiceCheckBoxes | Where-Object { $_.Checked })
-    $modeKey = if ([string]::IsNullOrWhiteSpace($script:ActiveProfile)) { 'Custom' } else { $script:ActiveProfile }
-    $script:ModeLabel.Text       = T 'mode.label'    @((Get-PresetName $modeKey))
-    $script:SelectionLabel.Text  = T 'mode.policies' @($selectedPolicies.Count, $script:CheckBoxes.Count)
-    $script:SystemLabel.Text     = T 'mode.system'   @($selectedTasks.Count, $selectedServices.Count)
-    $script:RiskLabel.Text       = T 'mode.risk'     @((Get-PresetRisk $modeKey))
-    $script:ModeDescription.Text = Get-PresetDescription $modeKey
-}
-
-function Set-CustomMode {
-    if ($script:SuppressSelectionEvents) { return }
-    $script:ActiveProfile = 'Custom'
-    Update-SelectionSummary
-}
-
-function Apply-Preset {
-    param([string]$Preset)
-
-    $payload = Get-PresetPayload -Preset $Preset
-    # Suppressed for correctness (no "Custom" downgrade) and for speed: the
-    # per-checkbox handler re-runs the whole configuration filter, and there
-    # are ninety-odd checkboxes. One recompute at the end is enough.
-    Push-SuppressSelectionEvents
-    try {
-        foreach ($cb in $script:CheckBoxes) {
-            $policyName = $cb.Tag.Policy.Name
-            $cb.Checked = $payload.Policies -contains $policyName
-        }
-        foreach ($cb in $script:TaskCheckBoxes) {
-            $cb.Checked = $payload.Tasks -contains $cb.Tag.Name
-        }
-        foreach ($cb in $script:ServiceCheckBoxes) {
-            $cb.Checked = $payload.Services -contains $cb.Tag.Name
-        }
-        foreach ($cb in $script:HostsCheckBoxes) {
-            $cb.Checked = $payload.Hosts -contains $cb.Tag.Id
-        }
-    } finally {
-        Pop-SuppressSelectionEvents
-    }
-    $script:ActiveProfile = $Preset
-    Update-SelectionSummary
-    Update-ConfigurationFilter
-    Write-Log "Loaded mode: $(Get-PresetNameEn $Preset)"
 }

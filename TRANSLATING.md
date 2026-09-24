@@ -27,7 +27,7 @@ back to English at runtime, key by key.
     "locale": "fr-FR",
     "name": "Français",
     "englishName": "French",
-    "appVersion": "1.12",
+    "appVersion": "2.0",
     "translators": ["your-github-handle"],
     "reviewed": false
   },
@@ -124,9 +124,7 @@ you're wondering why they stayed English:
 Two things that *are* translatable and are easy to miss, because they are not
 plain `Text` properties:
 
-- **The Scriptlets table.** Its seven column headers (`scriptlet.col.*`) and
-  the per-row `Enabled` / `Disabled` cell (`scriptlet.state.*`) are in the
-  catalog and are re-texted in place when you switch language.
+- **The Scriptlets table.** Its column headers (`scriptlet.col.*`) and the per-row `Enabled` / `Disabled` cell (`scriptlet.state.*`) are in the catalog and re-text live when you switch language.
 - **File-dialog filters.** Only the human half is translatable
   (`dialog.filter.textReport` = "Text report"); the app concatenates the
   `(*.txt)|*.txt` part itself. Do not try to put a glob in a translation —
@@ -154,20 +152,11 @@ translation at all.
 
 ## Layout notes
 
-The UI is absolutely positioned, so length matters in a few places.
+The window lays itself out, so a longer translation wraps or makes a card taller instead of overlapping its neighbour. A few places are still worth keeping short:
 
-- **Preset buttons** re-flow automatically. Their captions are measured at
-  runtime, so a long translation widens the button instead of overlapping the
-  next one. Still, try to stay under about 18 characters.
-- **Policy descriptions** get a wider font and taller rows for CJK locales
-  (`zh-*`). If your language needs the same treatment, say so in the PR and
-  we'll extend `Get-PolicyRowHeight` / `Get-PolicyDescFontSize`. Row geometry
-  is recalculated from scratch for whichever locale is active, so switching
-  back and forth does not accumulate height.
-- **Fonts**: `zh-*` uses Microsoft YaHei UI when it's installed, otherwise
-  Segoe UI. Note there is no "Microsoft YaHei UI Semibold" family, so bold is
-  requested as a *style* — if your script needs a specific family, mention it.
-- **Group box headers and tab captions** have no room to grow. Keep them tight.
+- **Side navigation entries** (`category.*`, `tab.*`, `nav.*`) get about 26 characters before they are cut off with an ellipsis.
+- **Mode card names** (`preset.*.name`) and the **bottom bar buttons** (`action.preview`, `action.apply`) read best at one short line.
+- **Fonts**: the window asks for Segoe UI with Microsoft YaHei UI as the fallback, and Windows fills in any other script from its own font fallback, so there is no per-language font code any more. If your script still renders badly, mention it in the PR.
 
 ---
 
@@ -196,15 +185,12 @@ elevated window too.
 
 Things worth clicking through:
 
-- Every tab, including the group boxes on **Search & Startup**.
-- Each preset button — check the description panel on the right isn't clipped.
-- The filter bar: type something, tick **Selected only**, watch the tab counts.
-- **Preview changes** and **Verify** — these stay English, that's expected.
-- Switch back to English from the picker. Everything should re-text live,
-  including combo boxes, tooltips and the preset row.
-- Export a config in your language, switch to English, import it. The
-  checkboxes must come back identical. If they don't, that's a bug in the app,
-  not your translation — please report it.
+- Every page in the side navigation, including the three sections on **Search & Startup**.
+- The mode cards on **Home**: check that no description is cut off.
+- **Find a setting**: type something, turn on **Selected only**.
+- **Preview changes** and **Verify**: these stay English, that's expected.
+- Switch back to English in **Settings**. Everything should re-text live, including pickers, tooltips and the mode cards.
+- Export a config in your language, switch to English, import it. The switches must come back identical. If they don't, that's a bug in the app, not your translation, so please report it.
 
 ---
 

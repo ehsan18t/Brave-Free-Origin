@@ -1,4 +1,4 @@
-# Brave Free Origin (v1.12)
+# Brave Free Origin (v2.0)
 
 
 
@@ -6,14 +6,11 @@
 
 The point is simple: Brave took the "remove the AI, crypto, VPN, promo junk" idea, called it Origin, and put it behind a paid upgrade. This project does the local Windows policy version of that idea for free, and then goes further with extra performance-focused modes.
 
-It is inspired by [MulesGaming/brave-debullshitinator](https://github.com/MulesGaming/brave-debullshitinator), but reshaped into a cleaner WinForms app with one-click modes, screenshots, backups, and a more normal Windows-user flow.
+It is inspired by [MulesGaming/brave-debullshitinator](https://github.com/MulesGaming/brave-debullshitinator), but reshaped into a native-feeling Windows app with one-click modes, backups, and a more normal Windows-user flow.
 
 ![Brave Free Origin GUI](images/screenshot.png)
 
-**New in v1.12:** the interface is translatable (Simplified Chinese included),
-and there is a search box that filters every setting at once. See
-[TRANSLATING.md](TRANSLATING.md) if you want to add your language — it is one
-JSON file, no PowerShell required.
+**New in v2.0:** a completely new interface. The app now looks and behaves like a Windows 11 app: side navigation, setting cards with switches, light and dark themes that follow Windows and your accent color, and a window that stays responsive while it reads or writes your system. The changelog below has the details. The interface is translatable (Simplified Chinese included); see [TRANSLATING.md](TRANSLATING.md) if you want to add your language. It is one JSON file, no PowerShell required.
 
 ---
 
@@ -29,48 +26,37 @@ That is the launcher. It opens PowerShell with the right execution-policy flag a
 
 **3. Click "Yes" on the UAC prompt.** Admin rights are required because the tool writes to `HKEY_LOCAL_MACHINE\Software\Policies\BraveSoftware\Brave` — the same place corporate IT writes group policies. No admin = no policies = nothing happens.
 
-**4. In the GUI, click `Load current state`** (top-left) if you want to see what's already configured on your machine. The boxes light up to show what is already enforced.
+**4. The app opens on Home and reads what this PC already has.** It does that in the background, so the window is usable right away; within a second or two every switch shows the current state and the bottom bar says whether anything is left to apply. `F5`, or `Load current state` on Home or in Settings, reads it again.
 
-**5. Pick a mode** in the colored button row at the top:
+**5. Pick a mode** from the cards on the Home page:
 
-| Button | What it does |
+| Card | What it does |
 |---|---|
 | **Quick Debloat** | Lightest cleanup. Removes the loudest extras (Rewards, Wallet, VPN, AI, password manager). Safest. |
 | **Recommended** | Sensible daily-driver setup. Good privacy + lighter UI + media-friendly defaults. |
 | **Origin Mode** | The free local answer to Brave's paywalled "Origin" build. |
 | **Privacy + Boost** | Origin Mode + startup and latency tuning. The performance default. |
 | **Max Performance** | Origin + Boost + Max Privacy unioned + extra UI trims. Aggressive. |
-| **Max Privacy** | Hard lockdown — disables sync, sign-in, imports, Brave update services. |
-| **Stock / None** | Unticks everything. Click `Apply to Brave` after to revert to default Brave. |
+| **Max Privacy** | Hard lockdown: disables sync, sign-in, imports, Brave update services. |
+| **Stock / None** | Turns every switch off. Click `Apply to Brave` after to revert to default Brave. |
 
-**6. (Optional) Tweak the tabs** below the buttons if you want to add/remove individual policies.
+Picking a mode only changes the switches. Nothing is written until you apply.
 
-There is also a `Default Scriptlets (Advanced)` tab. That is a separate optional tool for viewing Brave's built-in adblock scriptlet rules and manually disabling selected ones. Presets and the big `Apply to Brave` button never touch it.
+**6. (Optional) Fine-tune.** Every policy category, `System (Tasks / Services)`, `Hosts Blocklist` and `Search & Startup` has its own page in the side navigation, with a count of what is switched on. Click anywhere on a setting card to flip it. The bottom bar keeps a running count of changes that are not applied yet.
 
-**7. Click `Preview changes`** before applying. It shows exactly what will be added, changed, cleared, disabled, or reset. Nothing is written from Preview.
+There is also a `Default Scriptlets (Advanced)` page. That is a separate optional tool for viewing Brave's built-in adblock scriptlet rules and manually disabling selected ones. Presets and the big `Apply to Brave` button never touch it.
 
-**8. Click `Apply to Brave`** (the big green button). Then **fully close and reopen Brave** — running tabs need a restart to pick up the new policies.
+**7. Click `Preview changes`** in the bottom bar before applying. It shows exactly what will be added, changed, cleared, disabled, or reset. Nothing is written from Preview.
 
-**8b. (Optional) Use the filter bar** above the tabs to find a setting fast.
-Type any part of a policy name, its description or its category — `password`,
-`telemetry`, `BraveVPNDisabled` — and every tab collapses to just the matches,
-with a live count on each tab caption. Tick **Selected only** after picking a
-mode to review exactly what that preset is about to enforce, and nothing else.
+**8. Click `Apply to Brave`** (bottom right). Then **fully close and reopen Brave**: running tabs need a restart to pick up the new policies.
 
-The filter is **presentational only**: it hides and re-flows rows, and never
-ticks, unticks or otherwise changes a single setting. `Clear` restores every
-row. It covers the nine policy tabs, `System (Tasks / Services)` and
-`Hosts Blocklist`; `Search & Startup` and `Default Scriptlets` are not indexed
-by it (Scriptlets has its own scanner and search box, tuned for thousands of
-rows), so those two tab captions never show a match count.
+**8b. (Optional) Find a setting.** Type in **Find a setting** at the top of the side navigation, or press `Ctrl+F`. It searches every policy, task, service and hosts group on every page at once, by name, description, category or domain: `password`, `telemetry`, `BraveVPNDisabled`. Matches show as one list grouped by page, and they are the real settings, so flipping one there flips it on its own page too. Turn on **Selected only** to see just what is switched on, or use **Review selected** on Home after picking a mode to see exactly what that preset is about to enforce. `Esc` clears the search. `Search & Startup` and `Default Scriptlets` are not part of it; the scriptlet page has its own search box, built for tens of thousands of rules.
 
-**9. (Recommended)** Click the `Verify` button in the app. It reads the registry back and confirms your selections actually landed. You can copy or save the report. Or open `brave://policy` and check that each policy shows `Source: Platform`, `Scope: Machine`, `Status: OK`.
+**9. (Recommended)** Open **Settings** and click `Verify`. It reads the registry back and confirms your selections actually landed. You can copy or save the report. Or open `brave://policy` and check that each policy shows `Source: Platform`, `Scope: Machine`, `Status: OK`.
 
 ### Changing the language
 
-Use the **Language** dropdown in the top-right of the header. The change is
-live — no restart — and is remembered in
-`%LOCALAPPDATA%\Brave-Free-Origin\settings.json`.
+Open **Settings** and pick a **Language**. The change is live, with no restart, and is remembered in `%LOCALAPPDATA%\Brave-Free-Origin\settings.json`.
 
 You can also force it from the command line, which is handy for testing:
 
@@ -78,23 +64,15 @@ You can also force it from the command line, which is handy for testing:
 .\Brave-Free-Origin.ps1 -Lang zh-CN
 ```
 
-If you never touch the dropdown, the app follows your Windows display language.
-Resolution order is: `-Lang`, then the saved preference, then the Windows UI
-culture, then a same-language file, then English.
+If you never touch the picker, the app follows your Windows display language. Resolution order is: `-Lang`, then the saved preference, then the Windows UI culture, then a same-language file, then English.
 
-The same-language step will not cross writing systems. A `zh-CN`, `zh-SG` or
-`zh-Hans-*` Windows gets Simplified Chinese; a `zh-TW`, `zh-HK`, `zh-MO` or
-`zh-Hant-*` Windows stays in **English** unless a Traditional Chinese locale
-file is actually installed, because Simplified text is not a usable
-substitute. You can always pick any installed language from the dropdown.
+The same-language step will not cross writing systems. A `zh-CN`, `zh-SG` or `zh-Hans-*` Windows gets Simplified Chinese; a `zh-TW`, `zh-HK`, `zh-MO` or `zh-Hant-*` Windows stays in **English** unless a Traditional Chinese locale file is actually installed, because Simplified text is not a usable substitute. You can always pick any installed language in Settings.
 
-Diagnostic output stays in English on purpose: the log pane, the **Preview
-changes** report and the **Verify** report. That way a translated install still
-produces bug reports the maintainer can read. A handful of on-screen strings
-are also deliberately untranslated — policy names, scheduled task and service
-names, registry paths, domains, URLs, raw filter rules and scriptlet
-identifiers — because they are things you cross-check against
-`brave://policy`, `services.msc` or Brave's own filter lists.
+Diagnostic output stays in English on purpose: the Activity log, the **Preview changes** report and the **Verify** report. That way a translated install still produces bug reports the maintainer can read. A handful of on-screen strings are also deliberately untranslated (policy names, scheduled task and service names, registry paths, domains, URLs, raw filter rules and scriptlet identifiers), because they are things you cross-check against `brave://policy`, `services.msc` or Brave's own filter lists.
+
+### Theme
+
+By default the app follows Windows: light or dark app mode, and your accent color, including the title bar on Windows 11. **Settings** > **Theme** can pin Light or Dark instead; the choice is remembered in the same `settings.json`.
 
 ### Files in this folder
 
@@ -125,6 +103,20 @@ The launcher (`.bat`) is essentially one line: it runs the PowerShell script wit
 
 <details>
 <summary><strong>📜 Changelog (click to expand)</strong></summary>
+
+### What's new in v2.0
+
+A new interface, and the groundwork that makes it responsive.
+
+- **A native-feeling window.** The WinForms window is replaced by a WPF one modeled on Windows 11 Settings: side navigation with a live count per page, setting cards you click anywhere to flip, a Home page with one card per mode and a summary of your selection, and a bottom bar with the target channel, Preview and Apply.
+- **Light and dark themes.** Follows the Windows app mode and accent color by default, title bar included on Windows 11. Settings can pin Light or Dark.
+- **No more frozen window.** Reading the current state, Preview, Apply, Verify, Full restore, the hosts buttons and every scriptlet operation run on a background runspace. The window keeps responding, and a progress line in the bottom bar says what is running. Closing the window while something is being written asks you to close a second time.
+- **Pending changes.** The bottom bar shows how many changes are not applied yet, compared with what was last read from or written to this PC. The Hosts page does the same for hosts groups, which it writes separately.
+- **Find a setting** replaces the filter bar: one grouped list of matches from every page, `Ctrl+F` to jump to it, `Esc` to clear it.
+- **A much faster scriptlet scan.** Scriptlet lines are found with compiled code instead of reading every line of every list in script, and the table is virtualized, so there is no chunked rendering any more. On a real Brave profile, 22,645 rules scan in about four seconds and the search box filters them in well under a tenth of a second. A running scan can be cancelled.
+- **Dialogs and notifications inside the window.** Confirmations and reports follow the theme instead of using system message boxes, and routine results (applied, loaded, exported) are short notifications that fade out on their own.
+- **Activity panel.** The log is a collapsible panel with colored levels. Warnings and errors show a badge until you open it.
+- **Under the hood.** `src\core` no longer touches any control: everything that reads or writes the machine takes a snapshot of the selection (documented in `src\core\State.ps1`), which is what lets it run in the background. Tweak data, presets, the config file format and translations are unchanged, and old config files still import.
 
 ### What's new in v1.12
 
@@ -341,8 +333,8 @@ The new features don't conflict with each other or with the existing modes. A fe
 
 - Hosts blocking is a layered defense **on top of** policies, not a replacement. Picking a mode + ticking hosts blocks is the intended use.
 - The **Components** hosts group will stop Widevine and similar from updating. Only tick it if you also have `ComponentUpdatesEnabled` policy off (the same caveat as in Max Privacy mode).
-- Multi-channel apply does the same set of policies to every selected channel. If you only have Stable installed, leave the dropdown on Stable.
-- `Verify` reads from the dropdown's selected channel(s). Switch the dropdown, click Verify again to check a different channel.
+- Multi-channel apply does the same set of policies to every selected channel. If you only have Stable installed, leave the target on Stable.
+- `Verify` reads from the selected target channel(s). Switch the target, click Verify again to check a different channel.
 
 </details>
 
@@ -377,26 +369,26 @@ It can disable or reduce:
 It can also tune Brave for a lighter footprint:
 
 - QUIC / HTTP3 on
-- hardware acceleration: pick Enable (1) or Disable (0) from the dropdown next to the checkbox (Disable is handy for buggy GPU drivers / artifacts)
+- hardware acceleration: pick Enable (1) or Disable (0) from the picker next to its switch (Disable is handy for buggy GPU drivers / artifacts)
 - memory saver on
 - lighter startup behavior
 - blank homepage / blank new tab in the performance modes
 - disk cache cap
 - less background browser noise
 
-v1.9 also adds an optional advanced scriptlet manager. It can view and manually disable Brave's built-in adblock scriptlet rules in component filter lists. This is intentionally separate from the normal policy system and is only for users who choose to open the advanced tab and accept the warnings.
+v1.9 also adds an optional advanced scriptlet manager. It can view and manually disable Brave's built-in adblock scriptlet rules in component filter lists. This is intentionally separate from the normal policy system and is only for users who choose to open the advanced page and accept the warnings.
 
 ### Advanced scriptlet manager notes
 
-The `Default Scriptlets (Advanced)` tab is not part of the normal preset/apply flow. The one-click modes, policy tabs, config import, and big `Apply to Brave` button do not edit Brave's internal filter-list files.
+The `Default Scriptlets (Advanced)` page is not part of the normal preset/apply flow. The one-click modes, policy pages, config import, and big `Apply to Brave` button do not edit Brave's internal filter-list files.
 
 To bulk-disable matching scriptlets:
 
 1. Open `Default Scriptlets (Advanced)`.
-2. Click `Scan` and wait for rendering to finish.
-3. Use `Search/filter` if you only want a subset, such as `youtube`.
-4. Leave `Show disabled by this app only` unticked if you want active rules included.
-5. Tick `Advanced edit mode`.
+2. Click `Scan` and wait for it to finish. The window stays usable while it scans, and `Cancel` stops it.
+3. Type in the search box if you only want a subset, such as `youtube`.
+4. Leave `Show disabled by this app only` off if you want active rules included.
+5. Turn on `Advanced edit mode`.
 6. Click `Check filtered`.
 7. Confirm the status line shows the expected `Checked:` count.
 8. Click `Disable checked`.
@@ -509,15 +501,15 @@ Backups go to:
 
 To preview a change before committing it:
 
-1. Pick a mode or tweak checkboxes
+1. Pick a mode, or flip individual switches
 2. Click `Preview changes`
 3. Review the report
 4. Click `Apply to Brave` only if it looks right
 
 To fully restore stock behavior:
 
-1. Re-run the app
-2. Select the target channel, or `All installed channels`
+1. Re-run the app and open **Settings**
+2. Pick the Brave channel, or `All installed channels`
 3. Click `Full restore / stock`
 
 That removes Brave policy keys, clears the Brave-Free-Origin hosts block, re-enables known Brave update tasks, and resets known disabled Brave services to Manual.
@@ -534,14 +526,14 @@ Or:
 
 Or:
 
-1. Use the Hosts tab's `Remove hosts block` button to clear only the DNS-level blocklist
+1. Use the `Remove hosts block` button on the Hosts page to clear only the DNS-level blocklist
 
 Or, for advanced scriptlet edits only:
 
 1. Open `Default Scriptlets (Advanced)`
 2. Scan your Brave `User Data` folder
-3. Tick `Advanced edit mode`
-4. Use `Restore selected file` or `Restore all backups`
+3. Turn on `Advanced edit mode`
+4. Use `More` > `Restore selected file` or `Restore all backups`
 
 Scriptlet restores use the local `list.txt.bfo-backup` files created beside Brave's component filter lists.
 
@@ -565,12 +557,12 @@ Brave-Free-Origin/
 ├── README.zh-CN.md           # Simplified Chinese readme
 ├── TRANSLATING.md            # how to add a language
 ├── LICENSE
-├── src/                      # the app's code (all .ps1, ASCII only)
+├── src/                      # the app's code (.ps1 and .xaml, ASCII only)
 │   ├── core/                 #   logic: registry, hosts, presets, preview, apply, scriptlets
 │   ├── strings/en-US.ps1     #   English string catalog, the runtime source of truth
-│   └── ui/                   #   the window, one file per area and tab
+│   └── ui/                   #   the WPF window: theme, view model, background jobs, pages; xaml/ holds the layout
 ├── tweaks/                   # what the app can change, as plain data (see tweaks/README.md)
-│   ├── policies/             #   one .psd1 per policy tab
+│   ├── policies/             #   one .psd1 per policy page
 │   ├── system.psd1           #   Brave update tasks and services
 │   ├── hosts.psd1            #   hosts blocklist groups
 │   ├── search.psd1           #   search engines, new tab targets, startup modes
@@ -588,7 +580,7 @@ Brave-Free-Origin/
     └── Brave-after.png       # Memory comparison: after
 ```
 
-To add or change a policy, task, service, hosts group, search engine or mode, edit the matching file in `tweaks/`; [tweaks/README.md](tweaks/README.md) has the field reference and the checks to run. The load order in `Brave-Free-Origin.ps1` is the map of the code: `core` first, then the English strings, then `ui` from the top of the window to the bottom.
+To add or change a policy, task, service, hosts group, search engine or mode, edit the matching file in `tweaks/`; [tweaks/README.md](tweaks/README.md) has the field reference and the checks to run. The load order in `Brave-Free-Origin.ps1` is the map of the code: `core` first, then the English strings, then `ui`: theme, view model, background jobs, dialogs, the window itself, and the code behind each page.
 
 Backups land here:
 
@@ -599,13 +591,13 @@ Backups land here:
 └── brave-free-origin-config-YYYYMMDD-HHMMSS.json   # exported configs
 ```
 
-UI preferences (currently just the chosen language) live separately, per user:
+UI preferences (the chosen language and theme) live separately, per user:
 
 ```text
 %LOCALAPPDATA%\Brave-Free-Origin\settings.json
 ```
 
-Deleting it just resets the app to following your Windows display language.
+Deleting it just resets the app to following your Windows display language and theme.
 
 Advanced scriptlet backups are stored beside the Brave component list they protect:
 
@@ -626,7 +618,7 @@ and attached to releases — it is not a tracked file in this repository.
 ```jsonc
 {
   "schemaVersion": 2,          // the file format
-  "appVersion": "1.12",        // the app that wrote it - moves independently
+  "appVersion": "2.0",         // the app that wrote it - moves independently
   "exported": "2026-09-10T14:03:11",
   "channel": ["Stable"],
   "profile": "Recommended",    // stable preset id, never the translated label
@@ -651,7 +643,7 @@ imports identically with the UI in English and the other way round.
 
 ## Platform Compatibility
 
-Brave Free Origin is Windows-only — it's a WinForms GUI that writes to HKEY_LOCAL_MACHINE\Software\Policies\BraveSoftware\Brave.
+Brave Free Origin is Windows-only: it's a WPF app that writes to HKEY_LOCAL_MACHINE\Software\Policies\BraveSoftware\Brave.
 
 For macOS, there's an unofficial companion project:
 

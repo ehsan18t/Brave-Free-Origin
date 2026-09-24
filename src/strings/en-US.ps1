@@ -96,6 +96,60 @@ Add-Strings @{
     'theme.system'              = 'Use Windows setting'
 }
 
+# ---- Tags (tweaks\tags.psd1) ---------------------------------------------------------
+# effect.<Id>.title heads a group in the preview; impact.<Id>.name is the chip on
+# a setting card, impact.<Id>.explain the warning in the preview.
+Add-Strings @{
+    'effect.behavior.title'       = 'Browser behavior changed'
+    'effect.clutter.title'        = 'Less clutter and fewer prompts'
+    'effect.feature.title'        = 'Features removed or turned off'
+    'effect.performance.title'    = 'Faster and lighter'
+    'effect.privacy.title'        = 'Less data sent to Brave, Google or websites'
+    'effect.protection.title'     = 'Privacy and security protections set'
+    'effect.updates.title'        = 'Updates'
+    'impact.forgetsLogins.explain' = 'Websites forget their saved data when you close their tabs, so you will be signed out more often.'
+    'impact.forgetsLogins.name'   = 'Signs you out of sites'
+    'impact.lessProtection.explain' = 'A check that warns about leaked passwords or dangerous downloads stops running.'
+    'impact.lessProtection.name'  = 'Turns off a safety check'
+    'impact.noAutofill.explain'   = 'Brave stops saving and filling in passwords, addresses or cards. Use a separate password manager if you rely on one.'
+    'impact.noAutofill.name'      = 'Stops saving your details'
+    'impact.noDrm.explain'        = 'Components such as Widevine stop updating, so Netflix, Spotify and other protected video or music can stop playing.'
+    'impact.noDrm.name'           = 'Can break protected video'
+    'impact.noSync.explain'       = 'Brave Sync and account sign-in stop working on this PC.'
+    'impact.noSync.name'          = 'Turns off sync and sign-in'
+    'impact.noUpdates.explain'    = 'Brave will stop updating itself in the background. Check for updates yourself at brave://settings/help now and then.'
+    'impact.noUpdates.name'       = 'Stops auto-updates'
+}
+
+# ---- Apply preview: the "What will happen" tab -----------------------------------------
+Add-Strings @{
+    'preview.changed'         = '{0}: currently {1}, becomes {2}'
+    'preview.cleared'         = '{0}: currently {1}, will be removed'
+    'preview.lead'            = 'Applying {0} to Brave {1} makes {2} change(s). {3} setting(s) are already in place and stay as they are.'
+    'preview.leadNone'        = 'Everything is already in place in Brave {0}. Applying now changes nothing.'
+    'preview.noteBackup'      = 'Your current Brave policies are backed up first, so this can be undone.'
+    'preview.noteHosts'       = 'Hosts groups are not part of this. Write them from the Hosts page.'
+    'preview.noteNoBackup'    = 'Backups are turned off in Settings, so the current policies are not saved first.'
+    'preview.noteRestart'     = 'Close and reopen Brave afterwards: running tabs only pick up policies on a restart.'
+    'preview.ntpCleared'      = 'New tabs go back to your own setting'
+    'preview.ntpSet'          = 'New tabs open: {0}'
+    'preview.overrideSkipped' = 'Skipped because its settings are incomplete: {0}'
+    'preview.searchCleared'   = 'Your own choice of search engine applies again'
+    'preview.searchSet'       = 'Default search engine: {0}'
+    'preview.secDefault'      = 'Back to Brave''s own setting'
+    'preview.secHeadsUp'      = 'Worth knowing'
+    'preview.secOverrides'    = 'Search and startup'
+    'preview.serviceOff'      = 'Windows service {0}: will be stopped and disabled'
+    'preview.serviceReset'    = 'Windows service {0}: will be set back to Manual'
+    'preview.startupCleared'  = 'Startup goes back to your own setting'
+    'preview.startupSet'      = 'When Brave starts: {0}'
+    'preview.tabDetails'      = 'Technical details'
+    'preview.tabSummary'      = 'What will happen'
+    'preview.taskOff'         = 'Scheduled task {0}: will be disabled'
+    'preview.taskOn'          = 'Scheduled task {0}: will be turned back on'
+    'preview.yourSelection'   = 'your selection'
+}
+
 # ---- Dialog buttons ------------------------------------------------------------------
 Add-Strings @{
     'dialog.cancel' = 'Cancel'
@@ -183,7 +237,7 @@ Add-Strings @{
     'policy.AutoplayAllowed.description'                              = 'Block autoplaying media site-wide.'
     'policy.BackgroundModeEnabled.description'                        = 'Stop Brave from running in the background after window close.'
     'policy.BatterySaverModeAvailability.description'                 = 'Allow Battery Saver on low battery (2). 1=always on unplugged, 0=disabled.'
-    'policy.BookmarkBarEnabled.description'                           = 'Hide bookmark bar globally (small render win). Unticking lets user toggle.'
+    'policy.BookmarkBarEnabled.description'                           = 'Hide bookmark bar globally (small render win). Turn it off to show or hide it yourself.'
     'policy.BraveAIChatEnabled.description'                           = 'Disable Leo AI Chat assistant.'
     'policy.BraveDeAmpEnabled.description'                            = 'Bypass Google AMP pages to reach publisher directly. (Leave ON for privacy.)'
     'policy.BraveDebouncingEnabled.description'                       = 'Protect against bounce-tracking redirect chains. (Leave ON for privacy.)'

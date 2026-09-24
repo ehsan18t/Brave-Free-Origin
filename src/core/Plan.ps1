@@ -24,40 +24,143 @@ function Get-PlanLine {
     return [pscustomobject]@{ Verb = $verb; Text = $text }
 }
 
+# ---- The plan -----------------------------------------------------------------
+# Get-ApplyPlan reads the machine once and records, for every value, task and
+# service, what Apply would do. Both views of the preview are built from it:
+# Format-ApplyPlanReport (the technical report, below) and the plain-language
+# summary in src\ui\Summary.ps1. One plan, so the two can never disagree.
+#
+#   Channels   one entry per target channel: Channel, Path, Counts,
+#              Policies (Name, Verb, Text, Current, Target) and the three
+#              overrides Search, Ntp, Startup (see Get-OverridePlan)
+#   Tasks      Name, Verb (MISSING, KEEP, DISABLE, ENABLE), Text
+#   Services   Name, Verb (MISSING, KEEP, DISABLE, RESET), Text
+#   HostsDomains  how many hosts domains the selection holds
+
 # One override section. GetDesired is the matching Get-Desired*Override, called
 # with Overrides; if it throws (for example an empty custom URL) the section
-# shows the error instead.
-function Add-RegistryPlanLines {
-    param(
-        [System.Text.StringBuilder]$Report,
-        [string]$Path,
-        [scriptblock]$GetDesired,
-        $Overrides,
-        [string[]]$Names,
-        [string]$Title
-    )
-
-    [void]$Report.AppendLine("  -- $Title")
+# carries the error instead. Changes counts the values Apply would really
+# write or remove; Lines are the report lines, Desired what would be written.
+function Get-OverridePlan {
+    param([string]$Path, [scriptblock]$GetDesired, $Overrides, [string[]]$Names)
     try { $desired = & $GetDesired $Overrides }
-    catch { [void]$Report.AppendLine("     ERROR: $_"); return }
+    catch { return [pscustomobject]@{ Error = "$_"; Lines = @(); Changes = 0; Desired = $null } }
 
+    $lines = @()
     $changes = 0
     foreach ($name in $Names) {
         $wanted = $desired.Contains($name)
         $target = if ($wanted) { $desired[$name].Value } else { $null }
         $line = Get-PlanLine -State (Get-RegistryValueState -Path $Path -Name $name) -Name $name -Wanted $wanted -Target $target
         if (-not $line) { continue }
-        [void]$Report.AppendLine("     $($line.Text)")
+        $lines += $line.Text
         if ($line.Verb -ne 'KEEP') { $changes++ }
     }
-    if ($changes -eq 0) { [void]$Report.AppendLine('     No write needed.') }
+    if ($changes -eq 0) { $lines += 'No write needed.' }
+    return [pscustomobject]@{ Error = $null; Lines = $lines; Changes = $changes; Desired = $desired }
 }
 
-function New-ApplyPlanReport {
+function Get-StartupPlan {
+    param([string]$Path, $Overrides)
+    try {
+        $startup = Get-DesiredStartupOverride -Overrides $Overrides
+        $curStartup = Get-RegistryValueState -Path $Path -Name 'RestoreOnStartup'
+        $curUrls = @(Get-RegistryNumberedValues -Path (Join-Path $Path 'RestoreOnStartupURLs'))
+        $line = Get-PlanLine -State $curStartup -Name 'RestoreOnStartup' -Wanted $startup.Enabled -Target $startup.Code
+        $lines = @()
+        $changes = 0
+        if ($line) {
+            $lines += $line.Text
+            if ($line.Verb -ne 'KEEP') { $changes++ }
+        }
+        if ($startup.Enabled) {
+            if ($startup.Urls.Count -gt 0) {
+                $lines += "REPLACE RestoreOnStartupURLs with $($startup.Urls.Count) URL(s): $($startup.Urls -join ', ')"
+                if (($curUrls -join "`n") -ne ($startup.Urls -join "`n")) { $changes++ }
+            } elseif ($curUrls.Count -gt 0) {
+                $lines += 'CLEAR  RestoreOnStartupURLs'
+                $changes++
+            } else {
+                $lines += 'No startup URL list needed.'
+            }
+        } else {
+            if ($curUrls.Count -gt 0) {
+                $lines += "CLEAR  RestoreOnStartupURLs ($($curUrls.Count) URL(s))"
+                $changes++
+            }
+            if (-not $line -and $curUrls.Count -eq 0) { $lines += 'No write needed.' }
+        }
+        return [pscustomobject]@{ Error = $null; Lines = $lines; Changes = $changes; Desired = $startup }
+    } catch {
+        return [pscustomobject]@{ Error = "$_"; Lines = @(); Changes = 0; Desired = $null }
+    }
+}
+
+function Get-ApplyPlan {
     param($Selection)
+    $overrides = $Selection.Overrides
+    $channels = @(foreach ($channel in $Selection.Channels) {
+        $path = $script:Channels[$channel].Path
+        $counts = @{ ADD = 0; CHANGE = 0; CLEAR = 0; KEEP = 0 }
+        $policies = @(foreach ($p in $Selection.Policies) {
+            $state = Get-RegistryValueState -Path $path -Name $p.Name
+            $line = Get-PlanLine -State $state -Name $p.Name -Wanted $p.Checked -Target $p.Value
+            if (-not $line) { continue }
+            $counts[$line.Verb]++
+            [pscustomobject]@{ Name = $p.Name; Verb = $line.Verb; Text = $line.Text; Current = $state.Value; Target = $p.Value }
+        })
+        [pscustomobject]@{
+            Channel  = $channel
+            Path     = $path
+            Counts   = $counts
+            Policies = $policies
+            Search   = (Get-OverridePlan -Path $path -Overrides $overrides -Names $script:SearchOverrideValueNames `
+                            -GetDesired { param($o) Get-DesiredSearchOverride -Overrides $o })
+            Ntp      = (Get-OverridePlan -Path $path -Overrides $overrides -Names @('NewTabPageLocation') `
+                            -GetDesired { param($o) Get-DesiredNtpOverride -Overrides $o })
+            Startup  = (Get-StartupPlan -Path $path -Overrides $overrides)
+        }
+    })
+
+    $tasks = @(foreach ($t in $Selection.Tasks) {
+        $task = Get-ScheduledTask -TaskName $t.Name -ErrorAction SilentlyContinue
+        if (-not $task) { $verb = 'MISSING'; $text = "MISSING $($t.Name) - skipped" }
+        elseif ($t.Checked) {
+            if ($task.State -eq 'Disabled') { $verb = 'KEEP'; $text = "KEEP    $($t.Name) disabled" }
+            else { $verb = 'DISABLE'; $text = "DISABLE $($t.Name) (currently $($task.State))" }
+        } else {
+            if ($task.State -eq 'Disabled') { $verb = 'ENABLE'; $text = "ENABLE  $($t.Name)" }
+            else { $verb = 'KEEP'; $text = "KEEP    $($t.Name) enabled/current state $($task.State)" }
+        }
+        [pscustomobject]@{ Name = $t.Name; Verb = $verb; Text = $text }
+    })
+
+    $services = @(foreach ($s in $Selection.Services) {
+        $svc = Get-Service -Name $s.Name -ErrorAction SilentlyContinue
+        if (-not $svc) { $verb = 'MISSING'; $text = "MISSING $($s.Name) - skipped" }
+        elseif ($s.Checked) {
+            if ($svc.StartType -eq 'Disabled') { $verb = 'KEEP'; $text = "KEEP    $($s.Name) disabled" }
+            else { $verb = 'DISABLE'; $text = "DISABLE $($s.Name) (currently $($svc.StartType), $($svc.Status))" }
+        } else {
+            if ($svc.StartType -eq 'Disabled') { $verb = 'RESET'; $text = "RESET   $($s.Name) startup type to Manual" }
+            else { $verb = 'KEEP'; $text = "KEEP    $($s.Name) startup type $($svc.StartType)" }
+        }
+        [pscustomobject]@{ Name = $s.Name; Verb = $verb; Text = $text }
+    })
+
+    return [pscustomobject]@{
+        Channels     = $channels
+        Tasks        = $tasks
+        Services     = $services
+        HostsDomains = @(Get-SelectionHostsDomains -Selection $Selection).Count
+    }
+}
+
+# ---- The technical report ----------------------------------------------------------
+function Format-ApplyPlanReport {
+    param($Selection, $Plan)
     $report = New-Object System.Text.StringBuilder
     $modeKey = if ([string]::IsNullOrWhiteSpace($Selection.Profile)) { 'Custom' } else { $Selection.Profile }
-    $overrides = $Selection.Overrides
 
     [void]$report.AppendLine('Brave Free Origin apply preview')
     [void]$report.AppendLine("Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')")
@@ -68,86 +171,38 @@ function New-ApplyPlanReport {
     [void]$report.AppendLine('This is a dry run. Nothing has been written.')
     [void]$report.AppendLine('')
 
-    foreach ($channel in $Selection.Channels) {
-        $path = $script:Channels[$channel].Path
-        [void]$report.AppendLine("=== $channel  ($path) ===")
-        $counts = @{ ADD = 0; CHANGE = 0; CLEAR = 0; KEEP = 0 }
-        foreach ($p in $Selection.Policies) {
-            $line = Get-PlanLine -State (Get-RegistryValueState -Path $path -Name $p.Name) -Name $p.Name -Wanted $p.Checked -Target $p.Value
-            if (-not $line) { continue }
-            [void]$report.AppendLine("  $($line.Text)")
-            $counts[$line.Verb]++
-        }
+    foreach ($channel in $Plan.Channels) {
+        [void]$report.AppendLine("=== $($channel.Channel)  ($($channel.Path)) ===")
+        foreach ($p in $channel.Policies) { [void]$report.AppendLine("  $($p.Text)") }
+        $counts = $channel.Counts
         [void]$report.AppendLine("  Summary: $($counts.ADD) add, $($counts.CHANGE) change, $($counts.CLEAR) clear, $($counts.KEEP) already correct")
         [void]$report.AppendLine('')
-
-        Add-RegistryPlanLines -Report $report -Path $path -Overrides $overrides -Title 'Search override' `
-            -GetDesired { param($o) Get-DesiredSearchOverride -Overrides $o } -Names $script:SearchOverrideValueNames
-        [void]$report.AppendLine('')
-        Add-RegistryPlanLines -Report $report -Path $path -Overrides $overrides -Title 'New tab override' `
-            -GetDesired { param($o) Get-DesiredNtpOverride -Overrides $o } -Names @('NewTabPageLocation')
-        [void]$report.AppendLine('')
-
-        [void]$report.AppendLine('  -- Startup override')
-        try {
-            $startup = Get-DesiredStartupOverride -Overrides $overrides
-            $curStartup = Get-RegistryValueState -Path $path -Name 'RestoreOnStartup'
-            $curUrls = @(Get-RegistryNumberedValues -Path (Join-Path $path 'RestoreOnStartupURLs'))
-            $line = Get-PlanLine -State $curStartup -Name 'RestoreOnStartup' -Wanted $startup.Enabled -Target $startup.Code
-            if ($line) { [void]$report.AppendLine("     $($line.Text)") }
-            if ($startup.Enabled) {
-                if ($startup.Urls.Count -gt 0) {
-                    [void]$report.AppendLine("     REPLACE RestoreOnStartupURLs with $($startup.Urls.Count) URL(s): $($startup.Urls -join ', ')")
-                } elseif ($curUrls.Count -gt 0) {
-                    [void]$report.AppendLine('     CLEAR  RestoreOnStartupURLs')
-                } else {
-                    [void]$report.AppendLine('     No startup URL list needed.')
-                }
-            } else {
-                if ($curUrls.Count -gt 0) { [void]$report.AppendLine("     CLEAR  RestoreOnStartupURLs ($($curUrls.Count) URL(s))") }
-                if (-not $line -and $curUrls.Count -eq 0) { [void]$report.AppendLine('     No write needed.') }
-            }
-        } catch {
-            [void]$report.AppendLine("     ERROR: $_")
+        foreach ($section in @(@('Search override', $channel.Search), @('New tab override', $channel.Ntp), @('Startup override', $channel.Startup))) {
+            [void]$report.AppendLine("  -- $($section[0])")
+            if ($section[1].Error) { [void]$report.AppendLine("     ERROR: $($section[1].Error)") }
+            foreach ($line in $section[1].Lines) { [void]$report.AppendLine("     $line") }
+            [void]$report.AppendLine('')
         }
-        [void]$report.AppendLine('')
     }
 
     [void]$report.AppendLine('=== Scheduled tasks ===')
-    foreach ($t in $Selection.Tasks) {
-        $task = Get-ScheduledTask -TaskName $t.Name -ErrorAction SilentlyContinue
-        if (-not $task) {
-            [void]$report.AppendLine("  MISSING $($t.Name) - skipped")
-        } elseif ($t.Checked) {
-            if ($task.State -eq 'Disabled') { [void]$report.AppendLine("  KEEP    $($t.Name) disabled") }
-            else { [void]$report.AppendLine("  DISABLE $($t.Name) (currently $($task.State))") }
-        } else {
-            if ($task.State -eq 'Disabled') { [void]$report.AppendLine("  ENABLE  $($t.Name)") }
-            else { [void]$report.AppendLine("  KEEP    $($t.Name) enabled/current state $($task.State)") }
-        }
-    }
+    foreach ($t in $Plan.Tasks) { [void]$report.AppendLine("  $($t.Text)") }
     [void]$report.AppendLine('')
 
     [void]$report.AppendLine('=== Services ===')
-    foreach ($s in $Selection.Services) {
-        $svc = Get-Service -Name $s.Name -ErrorAction SilentlyContinue
-        if (-not $svc) {
-            [void]$report.AppendLine("  MISSING $($s.Name) - skipped")
-        } elseif ($s.Checked) {
-            if ($svc.StartType -eq 'Disabled') { [void]$report.AppendLine("  KEEP    $($s.Name) disabled") }
-            else { [void]$report.AppendLine("  DISABLE $($s.Name) (currently $($svc.StartType), $($svc.Status))") }
-        } else {
-            if ($svc.StartType -eq 'Disabled') { [void]$report.AppendLine("  RESET   $($s.Name) startup type to Manual") }
-            else { [void]$report.AppendLine("  KEEP    $($s.Name) startup type $($svc.StartType)") }
-        }
-    }
+    foreach ($s in $Plan.Services) { [void]$report.AppendLine("  $($s.Text)") }
     [void]$report.AppendLine('')
 
     [void]$report.AppendLine('=== Hosts blocklist ===')
     [void]$report.AppendLine('Main Apply does not edit hosts. Use Preview hosts / Apply hosts blocks on the Hosts page.')
-    [void]$report.AppendLine("Selected hosts domains right now: $(@(Get-SelectionHostsDomains -Selection $Selection).Count)")
+    [void]$report.AppendLine("Selected hosts domains right now: $($Plan.HostsDomains)")
 
     return $report.ToString()
+}
+
+function New-ApplyPlanReport {
+    param($Selection)
+    return Format-ApplyPlanReport -Selection $Selection -Plan (Get-ApplyPlan -Selection $Selection)
 }
 
 # Reads the registry and the hosts file back and compares them with the

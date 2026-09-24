@@ -75,6 +75,14 @@ if ($script:StartupError) {
 }
 . (Join-Path $AppRoot 'src\core\Presets.ps1')
 
+# ---- Tags --------------------------------------------------------------------
+# The loader already rejects unknown tags; here every tag needs its wording.
+foreach ($id in $script:EffectIds) { Test-Key "effect.$id.title" "Effect '$id' (tweaks\tags.psd1)" }
+foreach ($id in $script:ImpactIds) {
+    Test-Key "impact.$id.name" "Impact '$id' (tweaks\tags.psd1)"
+    Test-Key "impact.$id.explain" "Impact '$id' (tweaks\tags.psd1)"
+}
+
 # ---- Policies ----------------------------------------------------------------
 $seen = @{}
 $policyCount = 0

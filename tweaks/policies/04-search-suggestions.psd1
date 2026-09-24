@@ -6,11 +6,11 @@
 @{
     Category = 'searchSuggestions'
     Policies = @(
-        @{ Name = 'SearchSuggestEnabled';                    Type = 'DWORD'; ApplyValue = 0; Recommended = $true;  MaxPrivacy = $true },
-        @{ Name = 'UrlKeyedAnonymizedDataCollectionEnabled'; Type = 'DWORD'; ApplyValue = 0; Recommended = $true;  MaxPrivacy = $true },
-        @{ Name = 'SpellCheckServiceEnabled';                Type = 'DWORD'; ApplyValue = 0; Recommended = $true;  MaxPrivacy = $true },
-        @{ Name = 'SpellcheckEnabled';                       Type = 'DWORD'; ApplyValue = 0; Recommended = $false; MaxPrivacy = $false },
-        @{ Name = 'TranslateEnabled';                        Type = 'DWORD'; ApplyValue = 0; Recommended = $true;  MaxPrivacy = $true },
-        @{ Name = 'AlternateErrorPagesEnabled';              Type = 'DWORD'; ApplyValue = 0; Recommended = $true;  MaxPrivacy = $true }
+        @{ Name = 'SearchSuggestEnabled';                    Type = 'DWORD'; ApplyValue = 0; Recommended = $true;  MaxPrivacy = $true; Effect = 'privacy' },
+        @{ Name = 'UrlKeyedAnonymizedDataCollectionEnabled'; Type = 'DWORD'; ApplyValue = 0; Recommended = $true;  MaxPrivacy = $true; Effect = 'privacy' },
+        @{ Name = 'SpellCheckServiceEnabled';                Type = 'DWORD'; ApplyValue = 0; Recommended = $true;  MaxPrivacy = $true; Effect = 'privacy' },
+        @{ Name = 'SpellcheckEnabled';                       Type = 'DWORD'; ApplyValue = 0; Recommended = $false; MaxPrivacy = $false; Effect = 'feature' },
+        @{ Name = 'TranslateEnabled';                        Type = 'DWORD'; ApplyValue = 0; Recommended = $true;  MaxPrivacy = $true; Effect = 'feature' },
+        @{ Name = 'AlternateErrorPagesEnabled';              Type = 'DWORD'; ApplyValue = 0; Recommended = $true;  MaxPrivacy = $true; Effect = 'privacy' }
     )
 }

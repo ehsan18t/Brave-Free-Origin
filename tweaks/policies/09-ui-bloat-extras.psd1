@@ -6,13 +6,13 @@
 @{
     Category = 'uiBloatExtras'
     Policies = @(
-        @{ Name = 'LiveCaptionEnabled';              Type = 'DWORD'; ApplyValue = 0; Recommended = $true;  MaxPrivacy = $true },
-        @{ Name = 'AccessibilityImageLabelsEnabled'; Type = 'DWORD'; ApplyValue = 0; Recommended = $true;  MaxPrivacy = $true },
-        @{ Name = 'LensDesktopNTPSearchEnabled';     Type = 'DWORD'; ApplyValue = 0; Recommended = $true;  MaxPrivacy = $true },
-        @{ Name = 'LensRegionSearchEnabled';         Type = 'DWORD'; ApplyValue = 0; Recommended = $true;  MaxPrivacy = $true },
-        @{ Name = 'LensOverlaySettings';             Type = 'DWORD'; ApplyValue = 1; Recommended = $true;  MaxPrivacy = $true },
-        @{ Name = 'ReadingListEnabled';              Type = 'DWORD'; ApplyValue = 0; Recommended = $true;  MaxPrivacy = $true },
-        @{ Name = 'PromptForDownloadLocation';       Type = 'DWORD'; ApplyValue = 0; Recommended = $false; MaxPrivacy = $false },
-        @{ Name = 'BookmarkBarEnabled';              Type = 'DWORD'; ApplyValue = 0; Recommended = $false; MaxPrivacy = $false }
+        @{ Name = 'LiveCaptionEnabled';              Type = 'DWORD'; ApplyValue = 0; Recommended = $true;  MaxPrivacy = $true; Effect = 'feature' },
+        @{ Name = 'AccessibilityImageLabelsEnabled'; Type = 'DWORD'; ApplyValue = 0; Recommended = $true;  MaxPrivacy = $true; Effect = 'privacy' },
+        @{ Name = 'LensDesktopNTPSearchEnabled';     Type = 'DWORD'; ApplyValue = 0; Recommended = $true;  MaxPrivacy = $true; Effect = 'feature' },
+        @{ Name = 'LensRegionSearchEnabled';         Type = 'DWORD'; ApplyValue = 0; Recommended = $true;  MaxPrivacy = $true; Effect = 'feature' },
+        @{ Name = 'LensOverlaySettings';             Type = 'DWORD'; ApplyValue = 1; Recommended = $true;  MaxPrivacy = $true; Effect = 'feature' },
+        @{ Name = 'ReadingListEnabled';              Type = 'DWORD'; ApplyValue = 0; Recommended = $true;  MaxPrivacy = $true; Effect = 'clutter' },
+        @{ Name = 'PromptForDownloadLocation';       Type = 'DWORD'; ApplyValue = 0; Recommended = $false; MaxPrivacy = $false; Effect = 'behavior' },
+        @{ Name = 'BookmarkBarEnabled';              Type = 'DWORD'; ApplyValue = 0; Recommended = $false; MaxPrivacy = $false; Effect = 'clutter' }
     )
 }

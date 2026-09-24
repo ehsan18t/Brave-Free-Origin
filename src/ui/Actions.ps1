@@ -110,11 +110,19 @@ function Invoke-BfoLoadState {
 }
 
 # ---- Preview, apply, verify ------------------------------------------------------------
+# One plan, two views: the plain-language summary (src\ui\Summary.ps1) and the
+# technical report, both built from the same Get-ApplyPlan result.
 function Invoke-BfoPreview {
-    Start-BfoJob -Name 'Preview' -BusyKey 'busy.preview' -Argument (Get-SelectionSnapshot) `
-        -Script { param($In) New-ApplyPlanReport -Selection $In } -OnSuccess {
-        param($Report)
-        Show-TextReport -Title (T 'report.previewTitle') -Text $Report -DefaultFileName "brave-free-origin-apply-preview-$(Get-Date -Format 'yyyyMMdd-HHmmss').txt"
+    $snapshot = Get-SelectionSnapshot
+    Start-BfoJob -Name 'Preview' -BusyKey 'busy.preview' -Argument $snapshot -Tag $snapshot -Script {
+        param($In)
+        $plan = Get-ApplyPlan -Selection $In
+        [pscustomobject]@{ Plan = $plan; Report = (Format-ApplyPlanReport -Selection $In -Plan $plan) }
+    } -OnSuccess {
+        param($Result, $Job)
+        $summary = Get-PlanSummary -Plan $Result.Plan -Selection $Job.Tag
+        Show-TextReport -Title (T 'report.previewTitle') -Text $Result.Report -Summary $summary `
+            -DefaultFileName "brave-free-origin-apply-preview-$(Get-Date -Format 'yyyyMMdd-HHmmss').txt"
     }
 }
 

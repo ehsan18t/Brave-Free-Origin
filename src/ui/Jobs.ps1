@@ -45,8 +45,9 @@ function Start-BfoWorker {
 # Script is a scriptblock whose text runs on the worker, with Argument bound
 # to its $In parameter. It does not close over anything from the window: pass
 # what it needs in Argument. Code is the same as raw text. Tag is anything the
-# handlers need back; OnError gets the message and the job, so two queued jobs
-# never share state through a script variable.
+# handlers need back: OnSuccess gets the result and the job, OnError the
+# message and the job, so two queued jobs never share state through a script
+# variable.
 function Start-BfoJob {
     param(
         [string]$Name,
@@ -112,7 +113,7 @@ function Step-BfoJobs {
             if ($job.OnError) { & $job.OnError $failure $job }
             else { Show-BfoToast -Severity Error -Title (T 'msg.title.error') -Message (T 'msg.failed' @($failure)) }
         } elseif ($job.OnSuccess) {
-            & $job.OnSuccess $result
+            & $job.OnSuccess $result $job
         }
     }
 

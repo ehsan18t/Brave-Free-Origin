@@ -9,6 +9,7 @@ Everything Brave Free Origin can change on your machine is listed in this folder
 | `hosts.psd1` | Domain groups on the Hosts Blocklist tab. |
 | `search.psd1` | Search engines, new tab destinations and startup modes on the Search & Startup tab. |
 | `presets.psd1` | What each one-click mode button ticks. |
+| `tags.psd1` | The tags every entry above carries: what kind of change it is, and its side effects. |
 
 ## Rules for every file
 
@@ -35,13 +36,15 @@ Everything Brave Free Origin can change on your machine is listed in this folder
 | `ApplyValue` | The value written when ticked. |
 | `Recommended` | `$true` to include it in the Recommended mode. |
 | `MaxPrivacy` | `$true` to include it in the Max Privacy mode. |
+| `Effect` | Required tag: what kind of change this is (see [Tags](#tags-tagspsd1)). |
+| `Impacts` | Optional tags for side effects worth a warning, for example `@('noSync')`. |
 | `Choices` | Optional. Shows a dropdown next to the checkbox, for example `@(@{ Id = 'enable'; Value = 1 }, @{ Id = 'disable'; Value = 0 })`. `ApplyValue` must be one of the values. Each label is the string `policy.<Name>.choice.<Id>`. |
 
 The row description is the string `policy.<Name>.description`.
 
 ## System (`system.psd1`)
 
-`ScheduledTasks` and `Services` are lists of exact Windows names. A ticked task is disabled; a ticked service is stopped and set to Disabled. Unticking re-enables the task, or resets the service to Manual. Descriptions are the strings `task.<Name>.description` and `service.<Name>.description`.
+`ScheduledTasks` and `Services` are lists of entries such as `@{ Name = 'brave'; Effect = 'updates'; Impacts = @('noUpdates') }`, where `Name` is the exact Windows name and `Effect` and `Impacts` are tags. A ticked task is disabled; a ticked service is stopped and set to Disabled. Unticking re-enables the task, or resets the service to Manual. Descriptions are the strings `task.<Name>.description` and `service.<Name>.description`.
 
 ## Hosts groups (`hosts.psd1`)
 
@@ -51,6 +54,7 @@ The row description is the string `policy.<Name>.description`.
 | `Recommended` | `$true` to pre-tick the group when the Hosts tab opens. |
 | `LegacyName` | English label that v1.5 to v1.11 exports stored. Keeps old configs importable; leave it out for new groups. |
 | `Domains` | Host names written to the managed block of the Windows hosts file. |
+| `Effect`, `Impacts` | Tags, as for policies. |
 
 ## Search & Startup (`search.psd1`)
 
@@ -66,11 +70,20 @@ The row description is the string `policy.<Name>.description`.
 | `Tasks`, `Services` | `$true` ticks every entry in `system.psd1`. |
 | `Hosts` | Hosts group ids to tick. |
 
-The mode buttons themselves (their order and colors) are in `src\ui\ModeDeck.ps1`, and their names in the string catalog under `preset.<Id>`.
+The mode cards on the Home page (their order and risk color) are listed in `src\ui\Model.ps1`, and their names in the string catalog under `preset.<Id>`.
+
+## Tags (`tags.psd1`)
+
+Tags are how the app explains a change in plain language instead of registry values. Every policy, task, service and hosts group names one `Effect` and may list `Impacts`:
+
+- **`Effect`** says what kind of change it is: `feature` (a feature is removed or turned off), `privacy` (less data is sent), `protection` (a privacy or security protection is set), `performance`, `clutter`, `behavior` or `updates`. The `What will happen` tab of the Apply preview groups its changes by Effect, in the order `tags.psd1` lists them.
+- **`Impacts`** are side effects a normal user would not guess: `noUpdates`, `noDrm`, `noSync`, `noAutofill`, `lessProtection`, `forgetsLogins`. Each one shows as a small warning chip on the setting card, and as a warning in the preview whenever a change with that Impact is about to be enforced.
+
+The wording is in the string catalog: `effect.<Id>.title`, `impact.<Id>.name` (the chip) and `impact.<Id>.explain` (the warning). To add a tag, add its id to `tags.psd1` and its strings to `src\strings\en-US.ps1`. An unknown tag, or a tag without its strings, stops the app and fails `Test-Tweaks.ps1`.
 
 ## Adding a policy
 
-1. Add an entry to the right `policies\*.psd1` file.
+1. Add an entry to the right `policies\*.psd1` file, with its `Effect` and any `Impacts`.
 2. Add its description to `src\strings\en-US.ps1` as `'policy.<Name>.description'`.
 3. Optionally add its name to a mode in `presets.psd1`.
 4. Run the checks:

@@ -35,13 +35,16 @@ function New-BfoEase {
 # empty), IsDefault (Enter), IsCancel (Esc), and optionally Action - a scriptblock that runs
 # without closing the dialog (Copy, Save). Returns the Id of the button that
 # closed it. Report shows Message as a read-only, scrollable text block.
+# Summary (entries from src\ui\Summary.ps1) adds a plain-language tab in front
+# of the report, and opens on it.
 function Show-BfoDialog {
     param(
         [string]$Title,
         [string]$Message,
         [ValidateSet('None', 'Information', 'Question', 'Warning', 'Error', 'Success')][string]$Icon = 'Information',
         [object[]]$Buttons,
-        [switch]$Report
+        [switch]$Report,
+        $Summary
     )
     if ($script:DialogOpen -or -not $script:Window) { return $null }
     $ui = $script:Ui
@@ -74,6 +77,10 @@ function Show-BfoDialog {
         $card.Width = [double]::NaN
         $card.Height = [double]::NaN
     }
+    $ui.DialogSummary.ItemsSource = $Summary
+    $ui.DialogTabs.Visibility = ConvertTo-Visibility ($null -ne $Summary)
+    $ui.DialogTabSummary.IsChecked = $true
+    Update-DialogTab
 
     $ui.DialogButtons.Children.Clear()
     $focus = $null
@@ -115,8 +122,31 @@ function Show-BfoDialog {
         $ui.DialogLayer.Visibility = $script:Collapsed
         $ui.DialogButtons.Children.Clear()
         $ui.DialogReport.Text = ''
+        $ui.DialogSummary.ItemsSource = $null
+        $ui.DialogTabs.Visibility = $script:Collapsed
     }
     return $script:DialogResult
+}
+
+# With a summary, the tabs decide which of it and the report is visible.
+function Update-DialogTab {
+    $ui = $script:Ui
+    if ($null -eq $ui.DialogSummary.ItemsSource) {
+        $ui.DialogSummaryScroll.Visibility = $script:Collapsed
+        return
+    }
+    $summary = [bool]$ui.DialogTabSummary.IsChecked
+    $ui.DialogSummaryScroll.Visibility = ConvertTo-Visibility $summary
+    $ui.DialogReport.Visibility = ConvertTo-Visibility (-not $summary)
+    if ($summary) { $ui.DialogSummaryScroll.ScrollToHome() }
+}
+
+# Copy and Save export the tab being read.
+function Get-DialogExportText {
+    if ($null -ne $script:Ui.DialogSummary.ItemsSource -and $script:Ui.DialogTabSummary.IsChecked) {
+        return (ConvertTo-SummaryText $script:Ui.DialogSummary.ItemsSource)
+    }
+    return $script:ReportText
 }
 
 function Complete-BfoDialog {
@@ -157,23 +187,25 @@ function Show-TextReport {
     param(
         [string]$Title,
         [string]$Text,
-        [string]$DefaultFileName = 'brave-free-origin-report.txt'
+        [string]$DefaultFileName = 'brave-free-origin-report.txt',
+        $Summary
     )
     $script:ReportText = $Text
     $script:ReportFileName = $DefaultFileName
-    [void](Show-BfoDialog -Title $Title -Message $Text -Icon None -Report -Buttons @(
+    [void](Show-BfoDialog -Title $Title -Message $Text -Icon None -Report -Summary $Summary -Buttons @(
         @{ Id = 'copy'; Text = (T 'report.copy'); Action = {
             # Clipboard.SetText throws on an empty string, and when another
             # program holds the clipboard.
             try {
-                if ($script:ReportText) { [System.Windows.Clipboard]::SetText($script:ReportText) }
+                $export = Get-DialogExportText
+                if ($export) { [System.Windows.Clipboard]::SetText($export) }
                 Write-Log 'Report copied to the clipboard.' 'OK'
             } catch { Write-Log "Copy failed: $_" 'WARN' }
         } }
         @{ Id = 'save'; Text = (T 'report.save'); Action = {
             $file = Show-SaveDialog -FilterKey 'dialog.filter.textReport' -Extension 'txt' -FileName $script:ReportFileName
             if ($file) {
-                Set-Content -Path $file -Value $script:ReportText -Encoding UTF8
+                Set-Content -Path $file -Value (Get-DialogExportText) -Encoding UTF8
                 Write-Log "Report saved: $file" 'OK'
             }
         } }

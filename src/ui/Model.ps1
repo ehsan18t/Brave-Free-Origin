@@ -130,8 +130,18 @@ function New-SettingRow {
         Checked = $false; Title = ''; Note = ''; NoteVisibility = $script:Collapsed; Detail = ''; Tip = $null
         CardVisibility = $script:Visible; HeaderVisibility = $script:Collapsed
         Choices = $null; ChoiceIndex = -1; ChoiceVisibility = $script:Collapsed; Search = ''
+        Effect = $null; ImpactIds = @(); ImpactItems = $null; ImpactVisibility = $script:Collapsed
     }
     foreach ($key in $Properties.Keys) { $defaults[$key] = $Properties[$key] }
+    # Side-effect tags (tweaks	ags.psd1) show as chips on the card; their
+    # labels are filled in by Update-RowText.
+    $impacts = @($defaults.ImpactIds | Where-Object { $_ })
+    if ($impacts.Count -gt 0) {
+        $chips = New-BfoList
+        foreach ($id in $impacts) { $chips.Add((New-BfoObject @{ Id = $id; Label = '' })) }
+        $defaults.ImpactItems = $chips
+        $defaults.ImpactVisibility = $script:Visible
+    }
     , (New-BfoObject $defaults)
 }
 
@@ -140,7 +150,7 @@ function New-HeaderRow {
     , (New-BfoObject @{
         Kind = 'Header'; TitleKey = $TitleKey; Title = $(if ($TitleKey) { [string](T $TitleKey) } else { $Title })
         HeaderVisibility = $script:Visible; CardVisibility = $script:Collapsed; NoteVisibility = $script:Collapsed
-        ChoiceVisibility = $script:Collapsed; Checked = $false
+        ChoiceVisibility = $script:Collapsed; ImpactVisibility = $script:Collapsed; Checked = $false
     })
 }
 
@@ -160,6 +170,7 @@ foreach ($category in $script:Policies.Keys) {
             Kind = 'Policy'; Id = $policy.Name; PageId = $pageId; GroupKey = "category.$category"
             Policy = $policy; TitleKey = "policy.$($policy.Name).description"
             Detail = "$($policy.Name) = $($policy.ApplyValue)"
+            Effect = $policy.Effect; ImpactIds = @($policy.Impacts)
         }
         if ($policy.Choices) {
             # The value picker shows translated labels; the id behind each one
@@ -179,12 +190,12 @@ $script:PageRows['system'] = New-BfoList
 $script:PageRows['system'].Add((New-HeaderRow -TitleKey 'system.tasksHdr'))
 foreach ($task in $script:ScheduledTasks) {
     Add-SettingRow (New-SettingRow @{ Kind = 'Task'; Id = $task.Name; PageId = 'system'; GroupKey = 'system.tasksHdr'
-        TitleKey = "task.$($task.Name).description"; Detail = $task.Name })
+        TitleKey = "task.$($task.Name).description"; Detail = $task.Name; Effect = $task.Effect; ImpactIds = @($task.Impacts) })
 }
 $script:PageRows['system'].Add((New-HeaderRow -TitleKey 'system.svcHdr'))
 foreach ($service in $script:Services) {
     Add-SettingRow (New-SettingRow @{ Kind = 'Service'; Id = $service.Name; PageId = 'system'; GroupKey = 'system.svcHdr'
-        TitleKey = "service.$($service.Name).description"; Detail = $service.Name })
+        TitleKey = "service.$($service.Name).description"; Detail = $service.Name; Effect = $service.Effect; ImpactIds = @($service.Impacts) })
 }
 
 # Hosts groups start on their Recommended flag, as they always have, until the
@@ -193,7 +204,7 @@ $script:PageRows['hosts'] = New-BfoList
 foreach ($block in $script:HostsBlocks) {
     Add-SettingRow (New-SettingRow @{ Kind = 'Hosts'; Id = $block.Id; PageId = 'hosts'; GroupKey = 'tab.hosts'
         Block = $block; Checked = [bool]$block.Recommended; NoteVisibility = $script:Visible
-        Detail = ($block.Domains -join ', ') })
+        Detail = ($block.Domains -join ', '); Effect = $block.Effect; ImpactIds = @($block.Impacts) })
 }
 
 # Title, note and the search text are the parts of a row that depend on the
@@ -210,7 +221,11 @@ function Update-RowText {
         default { $Row.Title = [string](T $Row.TitleKey) }
     }
     if ($Row.Choices) { Update-ChoiceLabels $Row.Choices }
-    $Row.Search = ("$($Row.Id) $($Row.Title) $($Row.Note) $($Row.Detail) $(T $Row.GroupKey)").ToLowerInvariant()
+    $chipText = ''
+    if ($Row.ImpactItems) {
+        foreach ($chip in $Row.ImpactItems) { $chip.Label = [string](T "impact.$($chip.Id).name"); $chipText += " $($chip.Label)" }
+    }
+    $Row.Search = ("$($Row.Id) $($Row.Title) $($Row.Note) $($Row.Detail) $(T $Row.GroupKey)$chipText").ToLowerInvariant()
 }
 
 # The value a policy row writes: the picked choice, or the fixed ApplyValue.

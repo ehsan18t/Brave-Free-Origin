@@ -53,6 +53,69 @@
       </Setter>
     </Style>
 
+    <!-- One line of the preview's "What will happen" tab (src\ui\Summary.ps1).
+         Kind picks the look: Lead (the opening sentence), Section (a group
+         heading), Item (a bullet) or Note (a callout). Tone 'caution' turns a
+         heading or callout amber. -->
+    <DataTemplate x:Key="SummaryTemplate">
+      <Grid>
+        <TextBlock x:Name="Lead" Text="{Binding Text}" TextWrapping="Wrap" FontSize="15" Margin="0,2,0,4" Visibility="Collapsed"/>
+        <Grid x:Name="Section" Margin="0,18,0,6" Visibility="Collapsed">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
+          <TextBlock x:Name="SectionIcon" Text="{Binding Glyph}" Style="{StaticResource IconText}" FontSize="16" Margin="0,0,10,0"
+                     Foreground="{DynamicResource AccentText}"/>
+          <TextBlock Grid.Column="1" TextWrapping="Wrap" VerticalAlignment="Center">
+            <Run Text="{Binding Text, Mode=OneWay}" FontWeight="SemiBold"/><Run Text="{Binding Count, Mode=OneWay}" Foreground="{DynamicResource TextTertiary}"/>
+          </TextBlock>
+        </Grid>
+        <Grid x:Name="Item" Margin="26,3,0,4" Visibility="Collapsed">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
+          <Ellipse Width="5" Height="5" Fill="{DynamicResource TextTertiary}" VerticalAlignment="Top" Margin="0,8,11,0"/>
+          <StackPanel Grid.Column="1">
+            <TextBlock Text="{Binding Text}" TextWrapping="Wrap"/>
+            <TextBlock x:Name="ItemDetail" Text="{Binding Detail}" Style="{StaticResource MonoText}" Margin="0,1,0,0"/>
+          </StackPanel>
+        </Grid>
+        <Border x:Name="Note" Style="{StaticResource InfoBar}" Margin="0,4,0,4" Visibility="Collapsed">
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="NoteIcon" Text="&#xE946;" Style="{StaticResource IconText}" VerticalAlignment="Top" Margin="0,1,12,0"
+                       Foreground="{DynamicResource AccentText}"/>
+            <StackPanel Grid.Column="1">
+              <TextBlock x:Name="NoteTitle" Text="{Binding Text}" TextWrapping="Wrap" FontWeight="SemiBold"/>
+              <TextBlock x:Name="NoteDetail" Text="{Binding Detail}" Style="{StaticResource SecondaryText}" Margin="0,2,0,0"/>
+            </StackPanel>
+          </Grid>
+        </Border>
+      </Grid>
+      <DataTemplate.Triggers>
+        <DataTrigger Binding="{Binding Kind}" Value="Lead"><Setter TargetName="Lead" Property="Visibility" Value="Visible"/></DataTrigger>
+        <DataTrigger Binding="{Binding Kind}" Value="Section"><Setter TargetName="Section" Property="Visibility" Value="Visible"/></DataTrigger>
+        <DataTrigger Binding="{Binding Kind}" Value="Item"><Setter TargetName="Item" Property="Visibility" Value="Visible"/></DataTrigger>
+        <DataTrigger Binding="{Binding Kind}" Value="Note"><Setter TargetName="Note" Property="Visibility" Value="Visible"/></DataTrigger>
+        <DataTrigger Binding="{Binding Detail}" Value="">
+          <Setter TargetName="ItemDetail" Property="Visibility" Value="Collapsed"/>
+          <Setter TargetName="NoteDetail" Property="Visibility" Value="Collapsed"/>
+          <Setter TargetName="NoteTitle" Property="FontWeight" Value="Normal"/>
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Tone}" Value="caution">
+          <Setter TargetName="SectionIcon" Property="Foreground" Value="{DynamicResource CautionText}"/>
+          <Setter TargetName="Note" Property="Background" Value="{DynamicResource CautionBg}"/>
+          <Setter TargetName="NoteIcon" Property="Text" Value="&#xE7BA;"/>
+          <Setter TargetName="NoteIcon" Property="Foreground" Value="{DynamicResource CautionText}"/>
+        </DataTrigger>
+      </DataTemplate.Triggers>
+    </DataTemplate>
+
     <!-- A settings row: icon, title and description, and a control on the right -->
     <Style x:Key="RowIcon" TargetType="TextBlock" BasedOn="{StaticResource IconText}">
       <Setter Property="FontSize" Value="18"/>
@@ -954,6 +1017,7 @@
           <Grid Margin="24,22,24,20">
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
               <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
             <Grid>
@@ -964,10 +1028,20 @@
               <TextBlock x:Name="DialogIcon" Style="{StaticResource IconText}" FontSize="20" Margin="0,0,12,0"/>
               <TextBlock x:Name="DialogTitle" Grid.Column="1" Style="{StaticResource SubtitleText}" VerticalAlignment="Center"/>
             </Grid>
-            <ScrollViewer x:Name="DialogBodyScroll" Grid.Row="1" Margin="0,14,0,0" MaxHeight="380" VerticalScrollBarVisibility="Auto">
+            <!-- Shown when the dialog has a plain-language summary next to its report. -->
+            <StackPanel x:Name="DialogTabs" Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,0" Visibility="Collapsed">
+              <RadioButton x:Name="DialogTabSummary" Style="{StaticResource DialogTab}" GroupName="DialogTabs"
+                           Content="{DynamicResource preview.tabSummary}" IsChecked="True"/>
+              <RadioButton x:Name="DialogTabDetails" Style="{StaticResource DialogTab}" GroupName="DialogTabs"
+                           Content="{DynamicResource preview.tabDetails}"/>
+            </StackPanel>
+            <ScrollViewer x:Name="DialogBodyScroll" Grid.Row="2" Margin="0,14,0,0" MaxHeight="380" VerticalScrollBarVisibility="Auto">
               <TextBlock x:Name="DialogBody" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimary}"/>
             </ScrollViewer>
-            <TextBox x:Name="DialogReport" Grid.Row="1" Margin="0,14,0,0" Style="{StaticResource ReportBox}" Visibility="Collapsed"/>
+            <TextBox x:Name="DialogReport" Grid.Row="2" Margin="0,14,0,0" Style="{StaticResource ReportBox}" Visibility="Collapsed"/>
+            <ScrollViewer x:Name="DialogSummaryScroll" Grid.Row="2" Margin="0,10,0,0" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+              <ItemsControl x:Name="DialogSummary" ItemTemplate="{StaticResource SummaryTemplate}" Margin="0,0,14,0" Focusable="False"/>
+            </ScrollViewer>
           </Grid>
           <Border Grid.Row="1" Background="{DynamicResource LayerBg}" BorderBrush="{DynamicResource Divider}" BorderThickness="0,1,0,0"
                   CornerRadius="0,0,8,8" Padding="24,18,24,18">

@@ -6,11 +6,11 @@
 @{
     Category = 'aiGenAi'
     Policies = @(
-        @{ Name = 'GenAiDefaultSettings';  Type = 'DWORD'; ApplyValue = 2; Recommended = $true;  MaxPrivacy = $true },
-        @{ Name = 'HelpMeWriteSettings';   Type = 'DWORD'; ApplyValue = 2; Recommended = $true;  MaxPrivacy = $true },
-        @{ Name = 'TabOrganizerSettings';  Type = 'DWORD'; ApplyValue = 2; Recommended = $true;  MaxPrivacy = $true },
-        @{ Name = 'CreateThemesSettings';  Type = 'DWORD'; ApplyValue = 2; Recommended = $true;  MaxPrivacy = $true },
-        @{ Name = 'HistorySearchSettings'; Type = 'DWORD'; ApplyValue = 2; Recommended = $true;  MaxPrivacy = $true },
-        @{ Name = 'DevToolsGenAiSettings'; Type = 'DWORD'; ApplyValue = 2; Recommended = $true;  MaxPrivacy = $true }
+        @{ Name = 'GenAiDefaultSettings';  Type = 'DWORD'; ApplyValue = 2; Recommended = $true;  MaxPrivacy = $true; Effect = 'feature' },
+        @{ Name = 'HelpMeWriteSettings';   Type = 'DWORD'; ApplyValue = 2; Recommended = $true;  MaxPrivacy = $true; Effect = 'feature' },
+        @{ Name = 'TabOrganizerSettings';  Type = 'DWORD'; ApplyValue = 2; Recommended = $true;  MaxPrivacy = $true; Effect = 'feature' },
+        @{ Name = 'CreateThemesSettings';  Type = 'DWORD'; ApplyValue = 2; Recommended = $true;  MaxPrivacy = $true; Effect = 'feature' },
+        @{ Name = 'HistorySearchSettings'; Type = 'DWORD'; ApplyValue = 2; Recommended = $true;  MaxPrivacy = $true; Effect = 'feature' },
+        @{ Name = 'DevToolsGenAiSettings'; Type = 'DWORD'; ApplyValue = 2; Recommended = $true;  MaxPrivacy = $true; Effect = 'feature' }
     )
 }

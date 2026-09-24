@@ -943,6 +943,32 @@
     </Setter>
   </Style>
 
+  <!-- Tab heading inside a dialog: text with an accent bar under the selected one. -->
+  <Style x:Key="DialogTab" TargetType="RadioButton">
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
+    <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="RadioButton">
+          <Grid Background="Transparent" Margin="0,0,22,0">
+            <ContentPresenter Margin="0,6,0,9"/>
+            <Border x:Name="Bar" Height="3" Width="18" CornerRadius="1.5" VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                    Background="{DynamicResource Accent}" Visibility="Hidden"/>
+          </Grid>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+            </Trigger>
+            <Trigger Property="IsChecked" Value="True">
+              <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+              <Setter TargetName="Bar" Property="Visibility" Value="Visible"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
   <!-- ==== Surfaces ======================================================== -->
   <Style x:Key="Card" TargetType="Border">
     <Setter Property="Background" Value="{DynamicResource CardBg}"/>
@@ -994,6 +1020,25 @@
             <TextBlock Text="{Binding Title}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimary}"/>
             <TextBlock Text="{Binding Note}" Visibility="{Binding NoteVisibility}" Style="{StaticResource CaptionText}" Margin="0,2,0,0"/>
             <TextBlock Text="{Binding Detail}" Style="{StaticResource MonoText}" Margin="0,3,0,0"/>
+            <!-- Side effects from the tweak's Impacts tags (tweaks\tags.psd1) -->
+            <ItemsControl ItemsSource="{Binding ImpactItems}" Visibility="{Binding ImpactVisibility}" Margin="0,6,0,0" Focusable="False">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel/>
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Background="{DynamicResource CautionBg}" CornerRadius="10" Padding="7,1,9,2" Margin="0,0,6,2">
+                    <StackPanel Orientation="Horizontal">
+                      <TextBlock Text="&#xE7BA;" FontFamily="{StaticResource IconFont}" FontSize="10" Margin="0,1,5,0"
+                                 VerticalAlignment="Center" Foreground="{DynamicResource CautionText}"/>
+                      <TextBlock Text="{Binding Label}" FontSize="11.5" Foreground="{DynamicResource CautionText}"/>
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
           </StackPanel>
           <ComboBox Grid.Column="1" ItemsSource="{Binding Choices}" SelectedIndex="{Binding ChoiceIndex, Mode=TwoWay}"
                     Visibility="{Binding ChoiceVisibility}" MinWidth="150" Margin="16,0,0,0" VerticalAlignment="Center"/>

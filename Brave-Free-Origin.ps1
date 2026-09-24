@@ -83,6 +83,7 @@ $script:SourceFiles = @(
     'ui\Jobs.ps1'
     'ui\Dialogs.ps1'
     'ui\Window.ps1'
+    'ui\Summary.ps1'
     'ui\Actions.ps1'
     'ui\Scriptlets.ps1'
 )
@@ -90,6 +91,7 @@ $script:SourceFiles = @(
 $script:RequiredFiles = @(
     'src\ui\xaml\Theme.xaml'
     'src\ui\xaml\Window.xaml'
+    'tweaks\tags.psd1'
     'tweaks\system.psd1'
     'tweaks\hosts.psd1'
     'tweaks\search.psd1'

@@ -46,7 +46,7 @@ Picking a mode only changes the switches. Nothing is written until you apply.
 
 There is also a `Default Scriptlets (Advanced)` page. That is a separate optional tool for viewing Brave's built-in adblock scriptlet rules and manually disabling selected ones. Presets and the big `Apply to Brave` button never touch it.
 
-**7. Click `Preview changes`** in the bottom bar before applying. It shows exactly what will be added, changed, cleared, disabled, or reset. Nothing is written from Preview.
+**7. Click `Preview changes`** in the bottom bar before applying. It opens on **What will happen**: the changes in plain language, grouped by what they do (features removed, less data sent, faster and lighter, and so on), with warnings for side effects such as Brave no longer updating itself or sync turning off. **Technical details** has the exact registry values that will be added, changed or cleared. Nothing is written from Preview.
 
 **8. Click `Apply to Brave`** (bottom right). Then **fully close and reopen Brave**: running tabs need a restart to pick up the new policies.
 
@@ -112,6 +112,7 @@ A new interface, and the groundwork that makes it responsive.
 - **Light and dark themes.** Follows the Windows app mode and accent color by default, title bar included on Windows 11. Settings can pin Light or Dark.
 - **No more frozen window.** Reading the current state, Preview, Apply, Verify, Full restore, the hosts buttons and every scriptlet operation run on a background runspace. The window keeps responding, and a progress line in the bottom bar says what is running. Closing the window while something is being written asks you to close a second time.
 - **Pending changes.** The bottom bar shows how many changes are not applied yet, compared with what was last read from or written to this PC. The Hosts page does the same for hosts groups, which it writes separately.
+- **Preview in plain language.** Preview opens on a **What will happen** tab that groups the changes by what they do and warns about side effects, next to the technical report. Every setting in `tweaks\` carries tags for this (an Effect, and Impacts for side effects, see [tweaks/README.md](tweaks/README.md)); the same side effects show as small warning chips on the setting cards.
 - **Find a setting** replaces the filter bar: one grouped list of matches from every page, `Ctrl+F` to jump to it, `Esc` to clear it.
 - **A much faster scriptlet scan.** Scriptlet lines are found with compiled code instead of reading every line of every list in script, and the table is virtualized, so there is no chunked rendering any more. On a real Brave profile, 22,645 rules scan in about four seconds and the search box filters them in well under a tenth of a second. A running scan can be cancelled.
 - **Dialogs and notifications inside the window.** Confirmations and reports follow the theme instead of using system message boxes, and routine results (applied, loaded, exported) are short notifications that fade out on their own.

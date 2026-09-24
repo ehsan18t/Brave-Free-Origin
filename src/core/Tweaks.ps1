@@ -56,9 +56,40 @@ function Get-LegacyIdMap {
     return $map
 }
 
+# Every policy, task, service and hosts group carries one Effect and optional
+# Impacts, ids from tweaks\tags.psd1. Checked on load, so a typo stops the app
+# with the file and entry named instead of silently dropping out of the preview.
+function Assert-TweakTags {
+    param($Entry, [string]$What, [string]$RelativePath)
+    Assert-TweakField -Condition ($script:EffectIds -contains $Entry.Effect) -RelativePath $RelativePath `
+        -Message "${What}: Effect must be one of $($script:EffectIds -join ', ') (tweaks\tags.psd1)."
+    foreach ($impact in @($Entry.Impacts)) {
+        if ($null -eq $impact) { continue }
+        Assert-TweakField -Condition ($script:ImpactIds -contains $impact) -RelativePath $RelativePath `
+            -Message "${What}: unknown Impact '$impact'. Known: $($script:ImpactIds -join ', ') (tweaks\tags.psd1)."
+    }
+}
+
+# A task or service entry: a hashtable with Name and tags. A bare name string
+# is accepted too, so the check below can say what is missing.
+function ConvertTo-SystemEntry {
+    param($Entry, [string]$Kind)
+    $item = if ($Entry -is [hashtable]) { $Entry } else { @{ Name = "$Entry" } }
+    Assert-TweakField -Condition ([bool]$item.Name) -RelativePath 'system.psd1' -Message "Every $Kind needs a Name."
+    Assert-TweakTags -Entry $item -What "$Kind $($item.Name)" -RelativePath 'system.psd1'
+    return @{ Name = $item.Name; Effect = $item.Effect; Impacts = @($item.Impacts | Where-Object { $_ }) }
+}
+
 # Loads every tweak file into the script-scope tables. Wrapped in a function so
 # its temporaries stay local: this file is dot-sourced into the app's scope.
 function Import-Tweaks {
+    # ---- Tags ----------------------------------------------------------------------
+    # Loaded first: every other file is checked against them.
+    $tagData = Import-TweakFile 'tags.psd1'
+    $script:EffectIds = @($tagData.Effects | ForEach-Object { $_.Id })
+    $script:ImpactIds = @($tagData.Impacts | ForEach-Object { $_.Id })
+    Assert-TweakField -Condition ($script:EffectIds.Count -gt 0) -RelativePath 'tags.psd1' -Message 'Effects is empty.'
+
     # ---- Policies ----------------------------------------------------------------
     # One file per tab in tweaks\policies; the numeric file name prefix sets the tab
     # order. Each policy: Name (registry value name, never translated), Type
@@ -77,6 +108,7 @@ function Import-Tweaks {
             Assert-TweakField -Condition ($entry -is [hashtable] -and $entry.Name) -RelativePath $relative -Message 'Every policy needs a Name.'
             Assert-TweakField -Condition (@('DWORD', 'STRING') -contains $entry.Type) -RelativePath $relative -Message "$($entry.Name): Type must be 'DWORD' or 'STRING'."
             Assert-TweakField -Condition ($entry.ContainsKey('ApplyValue')) -RelativePath $relative -Message "$($entry.Name): ApplyValue is missing."
+            Assert-TweakTags -Entry $entry -What $entry.Name -RelativePath $relative
             $policy = @{}
             foreach ($key in $entry.Keys) { $policy[$key] = $entry[$key] }
             if ($entry.Choices) {
@@ -84,6 +116,7 @@ function Import-Tweaks {
                 foreach ($choice in $entry.Choices) { $choices[$choice.Id] = $choice.Value }
                 $policy['Choices'] = $choices
             }
+            $policy['Impacts'] = @($entry.Impacts | Where-Object { $_ })
             $list += $policy
         }
         $script:Policies[$data.Category] = $list
@@ -93,18 +126,21 @@ function Import-Tweaks {
     # Task / service descriptions live under task.<Name>.description and
     # service.<Name>.description in the string catalog.
     $systemData = Import-TweakFile 'system.psd1'
-    $script:ScheduledTasks = @($systemData.ScheduledTasks | ForEach-Object { @{Name = $_} })
-    $script:Services       = @($systemData.Services | ForEach-Object { @{Name = $_} })
+    $script:ScheduledTasks = @(foreach ($entry in $systemData.ScheduledTasks) { ConvertTo-SystemEntry $entry 'task' })
+    $script:Services       = @(foreach ($entry in $systemData.Services) { ConvertTo-SystemEntry $entry 'service' })
 
     # ---- Hosts blocklist groups --------------------------------------------------
     $hostsData = Import-TweakFile 'hosts.psd1'
     $script:HostsBlocks = @(foreach ($group in $hostsData.Groups) {
+        Assert-TweakTags -Entry $group -What "hosts group $($group.Id)" -RelativePath 'hosts.psd1'
         @{
             Id             = $group.Id
             NameKey        = "hosts.$($group.Id).name"
             DescriptionKey = "hosts.$($group.Id).description"
             Recommended    = $group.Recommended
             Domains        = $group.Domains
+            Effect         = $group.Effect
+            Impacts        = @($group.Impacts | Where-Object { $_ })
         }
     })
 

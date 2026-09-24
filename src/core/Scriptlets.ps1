@@ -46,7 +46,10 @@ function Get-ScriptletComponentInfo {
         } elseif ($componentId -ne 'unknown') {
             $source = $componentId
         }
-    } catch {}
+    } catch {
+        # A path outside Root keeps the 'unknown' placeholders.
+        Write-Verbose "Scriptlet component not recognized for ${File}: $_"
+    }
 
     return [pscustomobject]@{
         ComponentId = $componentId
@@ -141,7 +144,7 @@ function Get-ScriptletRecords {
     $files = @(Get-ScriptletListFiles -Root $Root)
     $totalBytes = [int64](@($files | Measure-Object Length -Sum).Sum)
     if ($totalBytes -lt 1) { $totalBytes = 1 }
-    Write-Log "Scriptlet scan started: $Root ($($files.Count) list file(s), $([Math]::Round($totalBytes / 1MB, 2)) MB)" 'INFO'
+    Write-BfoLog "Scriptlet scan started: $Root ($($files.Count) list file(s), $([Math]::Round($totalBytes / 1MB, 2)) MB)" 'INFO'
 
     $records = New-Object System.Collections.Generic.List[object]
     $warnings = New-Object System.Collections.Generic.List[string]
@@ -172,12 +175,12 @@ function Get-ScriptletRecords {
     $stopwatch.Stop()
     if ($Progress) { $Progress.Value = 1000 }
 
-    foreach ($warning in $warnings) { Write-Log $warning 'WARN' }
+    foreach ($warning in $warnings) { Write-BfoLog $warning 'WARN' }
     $seconds = [Math]::Round($stopwatch.Elapsed.TotalSeconds, 1)
     if ($cancelled) {
-        Write-Log "Scriptlet scan cancelled after ${seconds}s." 'WARN'
+        Write-BfoLog "Scriptlet scan cancelled after ${seconds}s." 'WARN'
     } else {
-        Write-Log "Scriptlet scan complete: $($records.Count) rule(s) from $Root in ${seconds}s" 'OK'
+        Write-BfoLog "Scriptlet scan complete: $($records.Count) rule(s) from $Root in ${seconds}s" 'OK'
     }
     return [pscustomobject]@{
         Root      = $Root
@@ -200,7 +203,7 @@ function Get-ScriptletListFiles {
         try {
             $files += Get-ChildItem -Path $dir.FullName -Recurse -Filter 'list.txt' -File -ErrorAction Stop
         } catch {
-            Write-Log "Scriptlet scan skipped $($dir.FullName): $_" 'WARN'
+            Write-BfoLog "Scriptlet scan skipped $($dir.FullName): $_" 'WARN'
         }
     }
     return @($files | Sort-Object FullName)
@@ -213,7 +216,7 @@ function Backup-ScriptletFile {
     $backup = "$File.bfo-backup"
     if (-not (Test-Path $backup)) {
         Copy-Item -LiteralPath $File -Destination $backup -Force
-        Write-Log "Scriptlet backup created: $backup" 'OK'
+        Write-BfoLog "Scriptlet backup created: $backup" 'OK'
     }
     return $backup
 }

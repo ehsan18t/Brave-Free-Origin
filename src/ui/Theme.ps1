@@ -158,7 +158,7 @@ function Update-BfoTitleBar {
             $text = [int]$fg.R -bor ([int]$fg.G -shl 8) -bor ([int]$fg.B -shl 16)
             [void][BraveFreeOrigin.Native]::DwmSetWindowAttribute($hwnd, 36, [ref]$text, 4)
         }
-    } catch { }
+    } catch { Write-BfoLog "Title bar colors skipped: $_" }
 }
 
 # The shield from the side bar, drawn in the accent color, so the taskbar and
@@ -181,5 +181,5 @@ function Update-BfoWindowIcon {
         $bitmap.Render($visual)
         $bitmap.Freeze()
         $script:Window.Icon = $bitmap
-    } catch { }
+    } catch { Write-BfoLog "Window icon skipped: $_" }
 }

@@ -133,7 +133,7 @@ function Invoke-ScriptletWrite {
     param([scriptblock]$Script, $Argument, [string]$FailKey)
     Start-BfoJob -Name 'Scriptlet edit' -BusyKey 'busy.scriptlets' -Script $Script -Argument $Argument -Tag $FailKey -OnSuccess {
         param($Message)
-        Write-Log $Message 'OK'
+        Write-BfoLog $Message 'OK'
         Invoke-ScriptletScan -AfterEdit
     } -OnError {
         param($Message, $Job)
@@ -150,13 +150,13 @@ function Show-ScriptletMessage {
 $ui.BtnScriptletScan.Add_Click({ Invoke-ScriptletScan })
 $ui.BtnScriptletAuto.Add_Click({
     $script:Vm.ScriptletRoot = [string](Get-ScriptletDefaultRoot)
-    Write-Log "Scriptlet User Data path set to: $($script:Vm.ScriptletRoot)"
+    Write-BfoLog "Scriptlet User Data path set to: $($script:Vm.ScriptletRoot)"
 })
 $ui.BtnScriptletBrowse.Add_Click({
     $folder = Show-FolderDialog -DescriptionKey 'dialog.browseUserData' -SelectedPath $script:Vm.ScriptletRoot
     if ($folder) {
         $script:Vm.ScriptletRoot = [string]$folder
-        Write-Log "Scriptlet User Data path set manually: $folder"
+        Write-BfoLog "Scriptlet User Data path set manually: $folder"
     }
 })
 $ui.BtnScriptletFolder.Add_Click({
@@ -175,7 +175,7 @@ $ui.TxtScriptletSearch.Add_TextChanged({
     $script:ScriptletFilterTimer.Start()
 })
 $ui.TxtScriptletSearch.Add_KeyDown({
-    param($sender, $e)
+    $e = $_
     if ($e.Key -eq [System.Windows.Input.Key]::Enter) {
         $script:ScriptletFilterTimer.Stop()
         Update-ScriptletView
@@ -186,7 +186,7 @@ $ui.ChkScriptletDisabledOnly.Add_Click({ Update-ScriptletView })
 
 # A tick in the table's check column.
 $ui.ScriptletGrid.AddHandler([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent, [System.Windows.RoutedEventHandler]{
-    param($sender, $e)
+    $e = $_
     if ($e.OriginalSource -is [System.Windows.Controls.CheckBox]) { Update-ScriptletStatusText }
 })
 
@@ -290,7 +290,7 @@ $ui.MnuScriptletCsv.Add_Click({
     $script:ScriptletVisibleRules |
         Select-Object Enabled, Domain, Scriptlet, Arguments, Source, Version, ComponentId, File, LineNumber, Rule |
         Export-Csv -Path $file -NoTypeInformation -Encoding UTF8
-    Write-Log "Scriptlet CSV exported: $file" 'OK'
+    Write-BfoLog "Scriptlet CSV exported: $file" 'OK'
 })
 
 $ui.MnuScriptletExportPrefs.Add_Click({
@@ -299,7 +299,7 @@ $ui.MnuScriptletExportPrefs.Add_Click({
     if (-not $file) { return }
     try {
         $count = Export-ScriptletDisabledPreferences -File $file -Rules $script:ScriptletRules
-        Write-Log "Disabled scriptlet prefs exported: $count rule(s)." 'OK'
+        Write-BfoLog "Disabled scriptlet prefs exported: $count rule(s)." 'OK'
     } catch {
         Show-ScriptletMessage 'msg.scriptlet.exportFailed' @("$_") -Icon Error
     }

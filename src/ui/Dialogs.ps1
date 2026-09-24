@@ -106,8 +106,8 @@ function Show-BfoDialog {
     $script:DialogResult = $null
     $script:DialogOpen = $true
     $ui.DialogLayer.Visibility = $script:Visible
-    Start-BfoFade $ui.DialogScrim 0 1 120
-    Start-BfoFade $card 0 1 160
+    Start-BfoFade -Element $ui.DialogScrim -From 0 -To 1 -Milliseconds 120
+    Start-BfoFade -Element $card -From 0 -To 1 -Milliseconds 160
     $zoom = [System.Windows.Media.Animation.DoubleAnimation]::new(0.96, 1, [TimeSpan]::FromMilliseconds(200))
     $zoom.EasingFunction = New-BfoEase
     $card.RenderTransform.BeginAnimation([System.Windows.Media.ScaleTransform]::ScaleXProperty, $zoom)
@@ -199,14 +199,14 @@ function Show-TextReport {
             try {
                 $export = Get-DialogExportText
                 if ($export) { [System.Windows.Clipboard]::SetText($export) }
-                Write-Log 'Report copied to the clipboard.' 'OK'
-            } catch { Write-Log "Copy failed: $_" 'WARN' }
+                Write-BfoLog 'Report copied to the clipboard.' 'OK'
+            } catch { Write-BfoLog "Copy failed: $_" 'WARN' }
         } }
         @{ Id = 'save'; Text = (T 'report.save'); Action = {
             $file = Show-SaveDialog -FilterKey 'dialog.filter.textReport' -Extension 'txt' -FileName $script:ReportFileName
             if ($file) {
                 Set-Content -Path $file -Value (Get-DialogExportText) -Encoding UTF8
-                Write-Log "Report saved: $file" 'OK'
+                Write-BfoLog "Report saved: $file" 'OK'
             }
         } }
         @{ Id = 'close'; Text = (T 'report.close'); Style = 'Accent'; IsDefault = $true; IsCancel = $true }
@@ -237,7 +237,7 @@ function Show-BfoToast {
     $ui.ToastText.Text = $Message
     $ui.ToastText.Visibility = ConvertTo-Visibility (-not [string]::IsNullOrWhiteSpace($Message))
     $ui.Toast.Visibility = $script:Visible
-    Start-BfoFade $ui.Toast 0 1 160
+    Start-BfoFade -Element $ui.Toast -From 0 -To 1 -Milliseconds 160
     $slide = [System.Windows.Media.Animation.DoubleAnimation]::new(16, 0, [TimeSpan]::FromMilliseconds(260))
     $slide.EasingFunction = New-BfoEase
     $ui.Toast.RenderTransform.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, $slide)

@@ -42,7 +42,7 @@ function Get-PlanLine {
 # carries the error instead. Changes counts the values Apply would really
 # write or remove; Lines are the report lines, Desired what would be written.
 function Get-OverridePlan {
-    param([string]$Path, [hashtable]$Values, [scriptblock]$GetDesired, $Overrides, [string[]]$Names)
+    param([hashtable]$Values, [scriptblock]$GetDesired, $Overrides, [string[]]$Names)
     try { $desired = & $GetDesired $Overrides }
     catch { return [pscustomobject]@{ Error = "$_"; Lines = @(); Changes = 0; Desired = $null } }
 
@@ -116,9 +116,9 @@ function Get-ApplyPlan {
             Path     = $path
             Counts   = $counts
             Policies = $policies
-            Search   = (Get-OverridePlan -Path $path -Values $values -Overrides $overrides -Names $script:SearchOverrideValueNames `
+            Search   = (Get-OverridePlan -Values $values -Overrides $overrides -Names $script:SearchOverrideValueNames `
                             -GetDesired { param($o) Get-DesiredSearchOverride -Overrides $o })
-            Ntp      = (Get-OverridePlan -Path $path -Values $values -Overrides $overrides -Names @('NewTabPageLocation') `
+            Ntp      = (Get-OverridePlan -Values $values -Overrides $overrides -Names @('NewTabPageLocation') `
                             -GetDesired { param($o) Get-DesiredNtpOverride -Overrides $o })
             Startup  = (Get-StartupPlan -Path $path -Values $values -Overrides $overrides)
         }

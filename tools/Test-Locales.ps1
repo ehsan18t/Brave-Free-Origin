@@ -184,7 +184,7 @@ $tokens = $null; $parseErrors = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile(
     (Resolve-Path $CatalogPath).Path, [ref]$tokens, [ref]$parseErrors)
 if ($parseErrors) {
-    $parseErrors | ForEach-Object { Write-Host "  parse: $($_.Message)" }
+    $parseErrors | ForEach-Object { Write-Output "  parse: $($_.Message)" }
     throw "$CatalogPath does not parse."
 }
 
@@ -206,7 +206,7 @@ foreach ($call in $calls) {
     }
 }
 if ($english.Count -eq 0) { throw 'No Add-Strings blocks found - catalog extraction failed.' }
-Write-Host "Embedded English catalog: $($english.Count) keys."
+Write-Output "Embedded English catalog: $($english.Count) keys."
 
 # Every key the app asks for at runtime must exist in English: T calls and
 # key parameters in script, {DynamicResource key} in the window XAML.
@@ -321,7 +321,7 @@ foreach ($file in $files) {
 
     $coverage = [math]::Round(100.0 * $props.Count / $english.Count)
     $missing  = $english.Count - $props.Count
-    Write-Host ("{0,-8} {1,4} keys  {2,3}% coverage  {3,4} missing  ({4} differ from English)" -f `
+    Write-Output ("{0,-8} {1,4} keys  {2,3}% coverage  {3,4} missing  ({4} differ from English)" -f `
         $code, $props.Count, $coverage, $missing, $translated)
 
     if ($code -eq 'en-US') {
@@ -346,15 +346,15 @@ foreach ($file in $files) {
 }
 
 if ($script:warnings) {
-    Write-Host ''
-    Write-Host 'Warnings:'
-    $script:warnings | ForEach-Object { Write-Host "  - $_" }
+    Write-Output ''
+    Write-Output 'Warnings:'
+    $script:warnings | ForEach-Object { Write-Output "  - $_" }
 }
 if ($script:failures) {
-    Write-Host ''
-    Write-Host "Failures ($($script:failures.Count)):"
-    $script:failures | ForEach-Object { Write-Host "  - $_" }
+    Write-Output ''
+    Write-Output "Failures ($($script:failures.Count)):"
+    $script:failures | ForEach-Object { Write-Output "  - $_" }
     exit 1
 }
-Write-Host ''
-Write-Host 'Locale validation OK.'
+Write-Output ''
+Write-Output 'Locale validation OK.'

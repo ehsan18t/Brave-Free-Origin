@@ -165,10 +165,10 @@ Set-Baseline -Scope All
 Update-SelectionSummary
 Show-BfoPage 'home' -NoAnimation
 
-Write-Log "Brave Free Origin v$($script:AppVersion) - running as administrator, OK."
-Write-Log "Brave version: $($script:BraveVersion)"
-Write-Log "UI locale: $($script:CurrentLocale)"
-Write-Log 'Loading current policy state...'
+Write-BfoLog "Brave Free Origin v$($script:AppVersion) - running as administrator, OK."
+Write-BfoLog "Brave version: $($script:BraveVersion)"
+Write-BfoLog "UI locale: $($script:CurrentLocale)"
+Write-BfoLog 'Loading current policy state...'
 
 # Reading this PC takes a few dozen milliseconds, so it happens before the
 # window first paints: every switch is right from the first frame and nothing
@@ -176,10 +176,10 @@ Write-Log 'Loading current policy state...'
 $initialLoad = $false
 try {
     Set-SelectionFromMachine (Get-BfoMachineState -Channel $script:TargetChannels[0])
-    Write-Log 'Loaded current system state.'
+    Write-BfoLog 'Loaded current system state.'
     $initialLoad = $true
 } catch {
-    Write-Log "Reading the current state failed, retrying in the background: $_" 'WARN'
+    Write-BfoLog "Reading the current state failed, retrying in the background: $_" 'WARN'
 }
 
 # The worker loads core\ in the background, for everything that writes.

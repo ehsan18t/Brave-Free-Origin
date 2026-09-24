@@ -70,7 +70,7 @@ $script:AppRoot = $AppRoot
 $script:StartupError = $null
 . (Join-Path $AppRoot 'src\core\Tweaks.ps1')
 if ($script:StartupError) {
-    Write-Host $script:StartupError
+    Write-Output $script:StartupError
     exit 1
 }
 . (Join-Path $AppRoot 'src\core\Presets.ps1')
@@ -176,9 +176,9 @@ if (-not $cycleFound) {
 }
 
 if ($script:failures) {
-    Write-Host ''
-    Write-Host "Failures ($($script:failures.Count)):"
-    $script:failures | ForEach-Object { Write-Host "  - $_" }
+    Write-Output ''
+    Write-Output "Failures ($($script:failures.Count)):"
+    $script:failures | ForEach-Object { Write-Output "  - $_" }
     exit 1
 }
-Write-Host "Tweak data OK: $policyCount policies in $($script:Policies.Count) tabs, $($script:ScheduledTasks.Count) tasks, $($script:Services.Count) services, $($script:HostsBlocks.Count) hosts groups, $($script:PresetDefinitions.Count) presets."
+Write-Output "Tweak data OK: $policyCount policies in $($script:Policies.Count) tabs, $($script:ScheduledTasks.Count) tasks, $($script:Services.Count) services, $($script:HostsBlocks.Count) hosts groups, $($script:PresetDefinitions.Count) presets."

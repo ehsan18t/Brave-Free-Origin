@@ -18,7 +18,7 @@ function Invoke-BfoPreset {
     $before = Get-PendingCounts
     Set-PresetSelection -Preset $Preset
     Update-SelectionSummary
-    Write-Log "Loaded mode: $(Get-PresetNameEn $Preset)"
+    Write-BfoLog "Loaded mode: $(Get-PresetNameEn $Preset)"
     $message = T 'toast.presetText'
     # Presets tick hosts groups too, but the main Apply never writes hosts.
     if ((Get-PendingCounts).Hosts -gt 0 -and (Get-PendingCounts).Hosts -ne $before.Hosts) { $message = T 'toast.presetHosts' }
@@ -108,7 +108,7 @@ function Invoke-BfoLoadState {
         -Script { param($In) Get-BfoMachineState -Channel $In } -OnSuccess {
         param($State)
         Set-SelectionFromMachine $State
-        Write-Log 'Loaded current system state.'
+        Write-BfoLog 'Loaded current system state.'
         $pending = $script:PendingPreset
         $script:PendingPreset = $null
         if ($pending) { Invoke-BfoPreset $pending }
@@ -214,7 +214,7 @@ $ui.BtnExport.Add_Click({
     if (-not $file) { return }
     $config = ConvertTo-BfoConfig -Selection (Get-SelectionSnapshot) -AppVersion $script:AppVersion
     $config | ConvertTo-Json -Depth 5 | Set-Content -Path $file -Encoding UTF8
-    Write-Log "Config exported: $file" 'OK'
+    Write-BfoLog "Config exported: $file" 'OK'
     Show-BfoToast -Severity Success -Title (T 'toast.exported') -Message $file
 })
 
@@ -230,7 +230,7 @@ $ui.BtnImport.Add_Click({
     }
     Import-BfoConfig $cfg
     $schema = if ($cfg.schemaVersion) { $cfg.schemaVersion } else { 1 }
-    Write-Log "Config imported from $file (schema $schema, app $($cfg.appVersion)$(if (-not $cfg.appVersion) { $cfg.version }))" 'OK'
+    Write-BfoLog "Config imported from $file (schema $schema, app $($cfg.appVersion)$(if (-not $cfg.appVersion) { $cfg.version }))" 'OK'
     Show-BfoToast -Severity Success -Title (T 'msg.title.imported') -Message (T 'msg.config.imported')
 })
 
@@ -309,15 +309,15 @@ $ui.PageSearch.AddHandler([System.Windows.Controls.TextBox]::TextChangedEvent, $
 $ui.BtnExtUbo.Add_Click({
     $url = 'https://chromewebstore.google.com/detail/ublock-origin-lite/ddkjiahejlhfcafbddmgiahcphecmpfh'
     if (-not (Open-BraveUrl $url)) { Start-Process $url }
-    Write-Log 'Opened uBlock Origin Lite install page.'
+    Write-BfoLog 'Opened uBlock Origin Lite install page.'
 })
 $ui.BtnExtShields.Add_Click({
-    if (-not (Open-BraveUrl 'brave://settings/shields')) { Write-Log 'Brave not found.' 'WARN' }
+    if (-not (Open-BraveUrl 'brave://settings/shields')) { Write-BfoLog 'Brave not found.' 'WARN' }
 })
 $ui.BtnExtBitwarden.Add_Click({
     $url = 'https://chromewebstore.google.com/detail/bitwarden-password-manage/nngceckbapebfimnlniiiahkandclblb'
     if (-not (Open-BraveUrl $url)) { Start-Process $url }
-    Write-Log 'Opened Bitwarden install page.'
+    Write-BfoLog 'Opened Bitwarden install page.'
 })
 
 # ---- Hosts page ------------------------------------------------------------------------------
@@ -360,7 +360,7 @@ $ui.BtnHostsLoad.Add_Click({
         Set-HostsRowsFromDomains -Current @($Current)
         Set-Baseline -Scope Hosts
         Update-SelectionSummary
-        Write-Log "Hosts state loaded: $(@($Current).Count) domain(s) currently blocked."
+        Write-BfoLog "Hosts state loaded: $(@($Current).Count) domain(s) currently blocked."
     }
 })
 

@@ -176,4 +176,4 @@ $utf8 = New-Object System.Text.UTF8Encoding($false)
 $full = [System.IO.Path]::GetFullPath($OutputPath)
 [System.IO.File]::WriteAllText($full, $json, $utf8)
 
-Write-Host "Wrote $($strings.Count) keys to $full (app version $AppVersion)."
+Write-Output "Wrote $($strings.Count) keys to $full (app version $AppVersion)."

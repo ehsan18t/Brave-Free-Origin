@@ -116,7 +116,7 @@ you're wondering why they stayed English:
   matched literally when re-enabling a rule and when reapplying an exported
   preference file. Translating it would orphan every edit a user had already
   made. Rule text itself is Brave's data, not ours.
-- **`Write-Log` output and the Preview / Verify reports.** Deliberate: a user
+- **`Write-BfoLog` output and the Preview / Verify reports.** Deliberate: a user
   running the app in Japanese should still be able to paste a report into a
   GitHub issue that the maintainer can read. If your users push back on this,
   open an issue and we'll reconsider.

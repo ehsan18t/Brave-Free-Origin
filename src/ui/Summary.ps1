@@ -54,7 +54,7 @@ function Get-PlanSummary {
         # Indexed, never assigned from an if: that would unroll an empty list
         # into $null.
         if (-not $effects.Contains($Effect)) { $Effect = @($effects.Keys)[0] }
-        $effects[$Effect].Add((New-SummaryEntry Item $Text $Detail))
+        $effects[$Effect].Add((New-SummaryEntry -Kind Item -Text $Text -Detail $Detail))
         foreach ($impact in @($ImpactIds | Where-Object { $_ })) {
             if (-not $impacts.Contains($impact)) { $impacts[$impact] = New-BfoList }
             if (-not $impacts[$impact].Contains($Text)) { $impacts[$impact].Add($Text) }
@@ -78,7 +78,7 @@ function Get-PlanSummary {
                 }
                 'CLEAR' {
                     $changes++
-                    $backToDefault.Add((New-SummaryEntry Item $title ($prefix + (T 'preview.cleared' @($p.Name, (Format-PolicyValue $row $p.Current))))))
+                    $backToDefault.Add((New-SummaryEntry -Kind Item -Text $title -Detail ($prefix + (T 'preview.cleared' @($p.Name, (Format-PolicyValue $row $p.Current))))))
                 }
             }
         }
@@ -90,14 +90,14 @@ function Get-PlanSummary {
         )) {
             $part = $spec.Plan
             if ($part.Error) {
-                $overrides.Add((New-SummaryEntry Item (T 'preview.overrideSkipped' @((T $spec.Section))) "$prefix$($part.Error)"))
+                $overrides.Add((New-SummaryEntry -Kind Item -Text (T 'preview.overrideSkipped' @((T $spec.Section))) -Detail "$prefix$($part.Error)"))
                 continue
             }
             if ($part.Changes -eq 0) { continue }
             $changes++
             $enabled = if ($part.Desired -is [System.Collections.IDictionary]) { $part.Desired.Count -gt 0 } else { [bool]$part.Desired.Enabled }
             $text = if ($enabled) { T $spec.Set @((& $spec.Label $part.Desired)) } else { T $spec.Cleared }
-            $overrides.Add((New-SummaryEntry Item $text ($prefix.Trim())))
+            $overrides.Add((New-SummaryEntry -Kind Item -Text $text -Detail ($prefix.Trim())))
         }
     }
 
@@ -113,8 +113,8 @@ function Get-PlanSummary {
                     $detail = if ($kind -eq 'Task') { T 'preview.taskOff' @($item.Name) } else { T 'preview.serviceOff' @($item.Name) }
                     & $enforce $row.Effect $row.ImpactIds $title $detail
                 }
-                'ENABLE' { $changes++; $backToDefault.Add((New-SummaryEntry Item $title (T 'preview.taskOn' @($item.Name)))) }
-                'RESET'  { $changes++; $backToDefault.Add((New-SummaryEntry Item $title (T 'preview.serviceReset' @($item.Name)))) }
+                'ENABLE' { $changes++; $backToDefault.Add((New-SummaryEntry -Kind Item -Text $title -Detail (T 'preview.taskOn' @($item.Name)))) }
+                'RESET'  { $changes++; $backToDefault.Add((New-SummaryEntry -Kind Item -Text $title -Detail (T 'preview.serviceReset' @($item.Name)))) }
             }
         }
     }
@@ -123,19 +123,19 @@ function Get-PlanSummary {
     $entries = New-BfoList
     $channelText = $Selection.Channels -join ', '
     if ($changes -eq 0) {
-        $entries.Add((New-SummaryEntry Lead (T 'preview.leadNone' @($channelText))))
+        $entries.Add((New-SummaryEntry -Kind Lead -Text (T 'preview.leadNone' @($channelText))))
     } else {
         # A named mode reads as "Applying Recommended"; a hand-picked mix as
         # "Applying your selection".
         $mode = if (@('Custom', 'CurrentState') -contains $Selection.Profile) { T 'preview.yourSelection' } else { Get-PresetName $Selection.Profile }
-        $entries.Add((New-SummaryEntry Lead (T 'preview.lead' @($mode, $channelText, $changes, $keeps))))
+        $entries.Add((New-SummaryEntry -Kind Lead -Text (T 'preview.lead' @($mode, $channelText, $changes, $keeps))))
     }
 
     if ($impacts.Count -gt 0) {
-        $entries.Add((New-SummaryEntry Section (T 'preview.secHeadsUp') -Tone caution -Glyph 0xE7BA))
+        $entries.Add((New-SummaryEntry -Kind Section -Text (T 'preview.secHeadsUp') -Tone caution -Glyph 0xE7BA))
         foreach ($impact in $impacts.Keys) {
-            $entries.Add((New-SummaryEntry Note (T "impact.$impact.name") (T "impact.$impact.explain") -Tone caution))
-            foreach ($text in $impacts[$impact]) { $entries.Add((New-SummaryEntry Item $text)) }
+            $entries.Add((New-SummaryEntry -Kind Note -Text (T "impact.$impact.name") -Detail (T "impact.$impact.explain") -Tone caution))
+            foreach ($text in $impacts[$impact]) { $entries.Add((New-SummaryEntry -Kind Item -Text $text)) }
         }
     }
 
@@ -143,25 +143,25 @@ function Get-PlanSummary {
         $group = $effects[$effect]
         if ($group.Count -eq 0) { continue }
         $glyph = if ($script:EffectGlyphs.ContainsKey($effect)) { $script:EffectGlyphs[$effect] } else { 0xE8FD }
-        $entries.Add((New-SummaryEntry Section (T "effect.$effect.title") -Glyph $glyph -Count "  $($group.Count)"))
+        $entries.Add((New-SummaryEntry -Kind Section -Text (T "effect.$effect.title") -Glyph $glyph -Count "  $($group.Count)"))
         foreach ($entry in $group) { $entries.Add($entry) }
     }
     if ($overrides.Count -gt 0) {
-        $entries.Add((New-SummaryEntry Section (T 'preview.secOverrides') -Glyph 0xE721 -Count "  $($overrides.Count)"))
+        $entries.Add((New-SummaryEntry -Kind Section -Text (T 'preview.secOverrides') -Glyph 0xE721 -Count "  $($overrides.Count)"))
         foreach ($entry in $overrides) { $entries.Add($entry) }
     }
     if ($backToDefault.Count -gt 0) {
-        $entries.Add((New-SummaryEntry Section (T 'preview.secDefault') -Glyph 0xE7A7 -Count "  $($backToDefault.Count)"))
+        $entries.Add((New-SummaryEntry -Kind Section -Text (T 'preview.secDefault') -Glyph 0xE7A7 -Count "  $($backToDefault.Count)"))
         foreach ($entry in $backToDefault) { $entries.Add($entry) }
     }
 
     if ($changes -gt 0) {
-        $entries.Add((New-SummaryEntry Section '' -Glyph 0))
-        if ($Selection.Backup) { $entries.Add((New-SummaryEntry Note (T 'preview.noteBackup'))) }
-        else { $entries.Add((New-SummaryEntry Note (T 'preview.noteNoBackup') -Tone caution)) }
-        $entries.Add((New-SummaryEntry Note (T 'preview.noteRestart')))
+        $entries.Add((New-SummaryEntry -Kind Section -Text '' -Glyph 0))
+        if ($Selection.Backup) { $entries.Add((New-SummaryEntry -Kind Note -Text (T 'preview.noteBackup'))) }
+        else { $entries.Add((New-SummaryEntry -Kind Note -Text (T 'preview.noteNoBackup') -Tone caution)) }
+        $entries.Add((New-SummaryEntry -Kind Note -Text (T 'preview.noteRestart')))
     }
-    if ((Get-PendingCounts).Hosts -gt 0) { $entries.Add((New-SummaryEntry Note (T 'preview.noteHosts'))) }
+    if ((Get-PendingCounts).Hosts -gt 0) { $entries.Add((New-SummaryEntry -Kind Note -Text (T 'preview.noteHosts'))) }
     , $entries
 }
 

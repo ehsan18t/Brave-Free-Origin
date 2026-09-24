@@ -13,7 +13,7 @@ function Backup-HostsFile {
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     $file = Join-Path (Get-BackupDir -Create) "hosts-backup-$stamp.bak"
     Copy-Item $script:HostsFile $file -Force
-    Write-Log "Hosts backup saved: $file" 'OK'
+    Write-BfoLog "Hosts backup saved: $file" 'OK'
     return $file
 }
 
@@ -65,12 +65,12 @@ function Set-HostsBlockDomains {
 
     # Flush DNS so the change takes effect immediately for new connections
     & ipconfig.exe /flushdns | Out-Null
-    Write-Log "Hosts block written: $($Domains.Count) domain(s). DNS cache flushed." 'OK'
+    Write-BfoLog "Hosts block written: $($Domains.Count) domain(s). DNS cache flushed." 'OK'
 }
 
 function Clear-HostsBlock {
     Set-HostsBlockDomains -Domains @()
-    Write-Log 'Hosts sentinel block removed.' 'OK'
+    Write-BfoLog 'Hosts sentinel block removed.' 'OK'
 }
 
 # Desired is every domain of the ticked groups; GroupCount is how many groups

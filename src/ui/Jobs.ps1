@@ -98,7 +98,10 @@ function Step-BfoJobs {
     Receive-BfoLog
     $job = $script:CurrentJob
     if ($job) {
-        if ($job.OnProgress) { try { & $job.OnProgress $script:JobProgress } catch { } }
+        if ($job.OnProgress) {
+            # Progress is cosmetic; a failed update must not stop the job.
+            try { & $job.OnProgress $script:JobProgress } catch { Write-Verbose "Progress update skipped: $_" }
+        }
         if (-not $job.Handle.IsCompleted) { return }
         # A job's result may open a dialog; never stack one on top of another.
         if ($script:DialogOpen) { return }
@@ -107,7 +110,7 @@ function Step-BfoJobs {
         $failure = $null
         try {
             $output = $job.PowerShell.EndInvoke($job.Handle)
-            foreach ($problem in $job.PowerShell.Streams.Error) { Write-Log "$($job.Name): $problem" 'WARN' }
+            foreach ($problem in $job.PowerShell.Streams.Error) { Write-BfoLog "$($job.Name): $problem" 'WARN' }
             if ($output -and $output.Count -gt 0) { $result = $output[$output.Count - 1] }
         } catch {
             $inner = $_.Exception
@@ -119,7 +122,7 @@ function Step-BfoJobs {
         Receive-BfoLog
         Update-BusyState
         if ($failure) {
-            Write-Log "$($job.Name) failed: $failure" 'ERR'
+            Write-BfoLog "$($job.Name) failed: $failure" 'ERR'
             if ($job.OnError) { & $job.OnError $failure $job }
             else { Show-BfoToast -Severity Error -Title (T 'msg.title.error') -Message (T 'msg.failed' @($failure)) }
         } elseif ($job.OnSuccess) {

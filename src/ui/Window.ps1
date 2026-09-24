@@ -30,7 +30,7 @@ function Publish-BfoStrings {
         $text = [string](T $key)
         # A bare resource is never formatted, so resolve {{ }} escapes here.
         if ($text -notmatch '\{\d+\}' -and ($text.Contains('{{') -or $text.Contains('}}'))) {
-            try { $text = [string]($text -f @()) } catch { }
+            try { $text = [string]($text -f @()) } catch { Write-Verbose "String '$key' kept as written: $_" }
         }
         $dictionary[$key] = $text
     }
@@ -126,7 +126,7 @@ function Show-BfoPage {
         if ($panel -is [System.Windows.Controls.ScrollViewer]) { $panel.ScrollToHome() }
         if (-not $NoAnimation) {
             # The page fades in and settles upward, like a Windows 11 page load.
-            Start-BfoFade $panel 0 1 170
+            Start-BfoFade -Element $panel -From 0 -To 1 -Milliseconds 170
             $rise = [System.Windows.Media.Animation.DoubleAnimation]::new(18, 0, [TimeSpan]::FromMilliseconds(260))
             $rise.EasingFunction = New-BfoEase
             $panel.RenderTransform.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, $rise)
@@ -205,11 +205,15 @@ $ui.NavSearch.Add_TextChanged({
 $ui.ChkSelectedOnly.Add_Click({ Update-SearchResults })
 
 # ---- Row changes ------------------------------------------------------------------
+# Event handlers here and in the other ui\ files take their event args from
+# $_ (and the sender, when needed, from $this). A param($sender, $e) block
+# would assign to $sender, which is a PowerShell automatic variable.
+
 # A click on a setting card flips its switch through the binding; this only
 # has to react. Click is raised for user input only, never for code that sets
 # Checked, so presets and state loads do not come through here.
 $script:OnRowClick = [System.Windows.RoutedEventHandler]{
-    param($sender, $e)
+    $e = $_
     $row = $e.OriginalSource.DataContext
     if ($e.OriginalSource -isnot [System.Windows.Controls.CheckBox] -or $row -isnot [System.Dynamic.ExpandoObject]) { return }
     if ($row.Kind -ne 'Hosts') { Set-CustomMode }
@@ -221,7 +225,7 @@ $script:OnRowClick = [System.Windows.RoutedEventHandler]{
 # away when the page swaps its rows (nothing added, row already detached), and
 # code-driven changes, which run muted.
 $script:OnRowChoice = [System.Windows.Controls.SelectionChangedEventHandler]{
-    param($sender, $e)
+    $e = $_
     if ($e.OriginalSource -isnot [System.Windows.Controls.ComboBox]) { return }
     $e.Handled = $true
     if ($script:SuppressSelectionEvents -or $e.RemovedItems.Count -eq 0 -or $e.AddedItems.Count -eq 0) { return }
@@ -248,7 +252,7 @@ $ui.BtnSelectNone.Add_Click({ Set-PageRowsChecked $false })
 
 # ---- Home ------------------------------------------------------------------------
 $ui.PresetCards.AddHandler([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent, [System.Windows.RoutedEventHandler]{
-    param($sender, $e)
+    $e = $_
     $card = $e.OriginalSource.DataContext
     if (-not $card -or -not $card.Id) { return }
     Invoke-BfoPreset $card.Id
@@ -256,7 +260,7 @@ $ui.PresetCards.AddHandler([System.Windows.Controls.Primitives.ButtonBase]::Clic
 
 # As many columns as fit at 210 px or more each.
 $ui.PresetCards.Add_SizeChanged({
-    param($sender, $e)
+    $e = $_
     $columns = [Math]::Max(2, [Math]::Min(4, [int][Math]::Floor($e.NewSize.Width / 210)))
     if ($script:Vm.PresetColumns -ne $columns) { $script:Vm.PresetColumns = $columns }
 })
@@ -288,7 +292,7 @@ function Switch-BfoLanguage {
     Update-ScriptletStatusText
     Save-BfoSetting 'language' $Code
     $name = ($script:LocaleList | Where-Object { $_.Code -eq $Code } | Select-Object -First 1).Name
-    Write-Log (T 'msg.language.switched' @($name)) 'OK'
+    Write-BfoLog (T 'msg.language.switched' @($name)) 'OK'
 }
 
 function Save-BfoSetting {
@@ -299,14 +303,14 @@ function Save-BfoSetting {
 }
 
 $ui.CmbLanguage.Add_SelectionChanged({
-    param($sender, $e)
+    $e = $_
     if ($e.RemovedItems.Count -eq 0) { return }
     $id = Get-ChoiceId $script:Vm.LanguageItems $script:Vm.LanguageIndex
     if ($id) { Switch-BfoLanguage $id }
 })
 
 $ui.CmbTheme.Add_SelectionChanged({
-    param($sender, $e)
+    $e = $_
     if ($e.RemovedItems.Count -eq 0) { return }
     $mode = Get-ChoiceId $script:Vm.ThemeItems $script:Vm.ThemeIndex
     if (-not $mode) { return }
@@ -322,9 +326,9 @@ $script:Window.Add_ContentRendered({ Update-BfoWindowIcon })
 # ---- Target channel -----------------------------------------------------------------
 foreach ($combo in @($ui.BarChannel, $ui.CmbChannel)) {
     $combo.Add_SelectionChanged({
-        param($sender, $e)
+        $e = $_
         if ($e.RemovedItems.Count -eq 0) { return }
-        if (Set-TargetFromChannelIndex) { Write-Log "Target channel(s): $($script:TargetChannels -join ', ')" }
+        if (Set-TargetFromChannelIndex) { Write-BfoLog "Target channel(s): $($script:TargetChannels -join ', ')" }
     })
 }
 
@@ -347,7 +351,7 @@ $ui.BtnLogClose.Add_Click({ Set-ActivityPanel $false })
 $ui.BtnLogClear.Add_Click({ $script:LogItems.Clear() })
 $ui.BtnLogCopy.Add_Click({
     $text = ($script:LogItems | ForEach-Object { "[$($_.Time)] [$($_.Level)] $($_.Message)" }) -join "`r`n"
-    try { if ($text) { [System.Windows.Clipboard]::SetText($text) } } catch { }
+    try { if ($text) { [System.Windows.Clipboard]::SetText($text) } } catch { Write-BfoLog "Copy failed: $_" 'WARN' }
 })
 $ui.ToastClose.Add_Click({
     $script:ToastTimer.Stop()
@@ -358,7 +362,7 @@ $ui.ToastClose.Add_Click({
 # Ctrl+F finds a setting, Esc leaves search, F5 reloads the state of this PC.
 # While a dialog is open, Esc presses its cancel button and nothing else runs.
 $script:Window.Add_PreviewKeyDown({
-    param($sender, $e)
+    $e = $_
     if ($script:DialogOpen) {
         if ($e.Key -eq [System.Windows.Input.Key]::Escape -and $script:DialogCancel) {
             $e.Handled = $true
@@ -382,7 +386,7 @@ $script:Window.Add_PreviewKeyDown({
 
 # Closing mid-apply would leave half a loadout written: ask the first time.
 $script:Window.Add_Closing({
-    param($sender, $e)
+    $e = $_
     if ((Test-BfoBusy) -and -not $script:CloseRequested) {
         $script:CloseRequested = $true
         $e.Cancel = $true
@@ -392,9 +396,9 @@ $script:Window.Add_Closing({
 
 # A handler that throws must not take the whole window down with it.
 $script:Window.Dispatcher.Add_UnhandledException({
-    param($sender, $e)
+    $e = $_
     $inner = $e.Exception
     while ($inner.InnerException) { $inner = $inner.InnerException }
-    Write-Log "UI error: $($inner.Message)" 'ERR'
+    Write-BfoLog "UI error: $($inner.Message)" 'ERR'
     $e.Handled = $true
 })

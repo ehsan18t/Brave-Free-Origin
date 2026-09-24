@@ -29,7 +29,10 @@ function Save-BfoSettings {
         $json = ([pscustomobject]$Settings | ConvertTo-Json -Depth 4)
         $utf8 = New-Object System.Text.UTF8Encoding($false)
         [System.IO.File]::WriteAllText($Path, $json, $utf8)
-    } catch { }
+    } catch {
+        # Preferences are a convenience: the app keeps working without them.
+        Write-BfoLog "Could not save preferences to ${Path}: $_" 'WARN'
+    }
 }
 
 # ---- Backup folder ---------------------------------------------------------

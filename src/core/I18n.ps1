@@ -164,11 +164,11 @@ function Set-BfoLocale {
     try {
         $loaded = Import-LocaleFile -Path $path
     } catch {
-        Write-Log "Locale '$Code' could not be parsed, staying on English: $_" 'WARN'
+        Write-BfoLog "Locale '$Code' could not be parsed, staying on English: $_" 'WARN'
         return $false
     }
     if (-not $loaded) {
-        Write-Log "Locale '$Code' not found or empty, staying on English." 'WARN'
+        Write-BfoLog "Locale '$Code' not found or empty, staying on English." 'WARN'
         return $false
     }
 
@@ -177,7 +177,7 @@ function Set-BfoLocale {
     $coverage = if ($script:EnglishStrings.Count -gt 0) {
         [math]::Round(100.0 * $loaded.Strings.Count / $script:EnglishStrings.Count)
     } else { 0 }
-    Write-Log "Locale '$Code' loaded: $($loaded.Strings.Count) strings ($coverage% coverage), $($loaded.Rejected) rejected." 'OK'
+    Write-BfoLog "Locale '$Code' loaded: $($loaded.Strings.Count) strings ($coverage% coverage), $($loaded.Rejected) rejected." 'OK'
     return $true
 }
 

@@ -14,7 +14,7 @@ function Enable-BraveTask {
     $task = Get-BraveTaskState -Name $Name
     if ($task -and $task.State -eq 'Disabled') {
         Enable-ScheduledTask -TaskName $Name -ErrorAction Stop | Out-Null
-        Write-Log "ENABLED task $Name" 'OK'
+        Write-BfoLog "ENABLED task $Name" 'OK'
     }
 }
 
@@ -22,7 +22,7 @@ function Reset-BraveService {
     param([string]$Name, [string]$StartType)
     if ($StartType -eq 'Disabled') {
         Set-Service -Name $Name -StartupType Manual -ErrorAction Stop
-        Write-Log "RESET service $Name to Manual" 'OK'
+        Write-BfoLog "RESET service $Name to Manual" 'OK'
     }
 }
 
@@ -39,19 +39,19 @@ function Invoke-Apply {
     $cleared = 0
     foreach ($channel in $Selection.Channels) {
         $path = $script:Channels[$channel].Path
-        Write-Log "--- Applying to channel: $channel ($path) ---"
+        Write-BfoLog "--- Applying to channel: $channel ($path) ---"
         foreach ($p in $Selection.Policies) {
             if ($p.Checked) {
                 try {
                     Set-PolicyValue -Path $path -Name $p.Name -Type $p.Type -Value $p.Value
-                    Write-Log "[$channel] SET $($p.Name) = $($p.Value)" 'OK'
+                    Write-BfoLog "[$channel] SET $($p.Name) = $($p.Value)" 'OK'
                     $applied++
                 } catch {
-                    Write-Log "[$channel] FAIL $($p.Name): $_" 'ERR'
+                    Write-BfoLog "[$channel] FAIL $($p.Name): $_" 'ERR'
                 }
             } else {
                 if (Remove-PolicyValue -Path $path -Name $p.Name) {
-                    Write-Log "[$channel] CLEARED $($p.Name)" 'OK'
+                    Write-BfoLog "[$channel] CLEARED $($p.Name)" 'OK'
                     $cleared++
                 }
             }
@@ -62,21 +62,21 @@ function Invoke-Apply {
         # Each helper clears its own values first, so unticking + Apply truly
         # removes them, and creates the policy key only when it has a value to write.
         $overrides = $Selection.Overrides
-        try { [void](Apply-SearchEngineOverride -Path $path -Overrides $overrides) } catch { Write-Log "[$channel] Search override: $_" 'ERR' }
-        try { [void](Apply-NtpOverride          -Path $path -Overrides $overrides) } catch { Write-Log "[$channel] NTP override: $_" 'ERR' }
-        try { [void](Apply-StartupOverride      -Path $path -Overrides $overrides) } catch { Write-Log "[$channel] Startup override: $_" 'ERR' }
+        try { [void](Write-SearchEngineOverride -Path $path -Overrides $overrides) } catch { Write-BfoLog "[$channel] Search override: $_" 'ERR' }
+        try { [void](Write-NtpOverride          -Path $path -Overrides $overrides) } catch { Write-BfoLog "[$channel] NTP override: $_" 'ERR' }
+        try { [void](Write-StartupOverride      -Path $path -Overrides $overrides) } catch { Write-BfoLog "[$channel] Startup override: $_" 'ERR' }
     }
 
     foreach ($t in $Selection.Tasks) {
         try {
             if ($t.Checked) {
                 Disable-ScheduledTask -TaskName $t.Name -ErrorAction Stop | Out-Null
-                Write-Log "DISABLED task $($t.Name)" 'OK'
+                Write-BfoLog "DISABLED task $($t.Name)" 'OK'
             } else {
                 Enable-BraveTask -Name $t.Name
             }
         } catch {
-            Write-Log "Task $($t.Name): $_" 'WARN'
+            Write-BfoLog "Task $($t.Name): $_" 'WARN'
         }
     }
 
@@ -84,22 +84,22 @@ function Invoke-Apply {
         try {
             $svc = Get-Service -Name $s.Name -ErrorAction SilentlyContinue
             if (-not $svc) {
-                Write-Log "Service $($s.Name) not present - skipped." 'INFO'
+                Write-BfoLog "Service $($s.Name) not present - skipped." 'INFO'
                 continue
             }
             if ($s.Checked) {
                 if ($svc.Status -eq 'Running') { Stop-Service -Name $s.Name -Force -ErrorAction SilentlyContinue }
                 Set-Service -Name $s.Name -StartupType Disabled -ErrorAction Stop
-                Write-Log "DISABLED service $($s.Name)" 'OK'
+                Write-BfoLog "DISABLED service $($s.Name)" 'OK'
             } else {
                 Reset-BraveService -Name $s.Name -StartType $svc.StartType
             }
         } catch {
-            Write-Log "Service $($s.Name): $_" 'WARN'
+            Write-BfoLog "Service $($s.Name): $_" 'WARN'
         }
     }
 
-    Write-Log "Done. Applied $applied policies, cleared $cleared. Restart Brave to take effect." 'DONE'
+    Write-BfoLog "Done. Applied $applied policies, cleared $cleared. Restart Brave to take effect." 'DONE'
 
     return [pscustomobject]@{ Applied = $applied; Cleared = $cleared }
 }
@@ -116,27 +116,27 @@ function Invoke-FullRestore {
         try {
             if (Test-Path $path) {
                 Remove-Item -Path $path -Recurse -Force -ErrorAction Stop
-                Write-Log "Removed policy key for $channel ($path)" 'OK'
+                Write-BfoLog "Removed policy key for $channel ($path)" 'OK'
             } else {
-                Write-Log "$channel had no policy key - skipped." 'INFO'
+                Write-BfoLog "$channel had no policy key - skipped." 'INFO'
             }
         } catch {
-            Write-Log "Full restore policy remove [$channel]: $_" 'ERR'
+            Write-BfoLog "Full restore policy remove [$channel]: $_" 'ERR'
         }
     }
 
     $currentHosts = @(Get-HostsCurrentDomains)
     if ($currentHosts.Count -gt 0) {
-        try { Clear-HostsBlock } catch { Write-Log "Full restore hosts clear: $_" 'ERR' }
+        try { Clear-HostsBlock } catch { Write-BfoLog "Full restore hosts clear: $_" 'ERR' }
     } else {
-        Write-Log 'No Brave-Free-Origin hosts block present.' 'INFO'
+        Write-BfoLog 'No Brave-Free-Origin hosts block present.' 'INFO'
     }
 
     foreach ($t in $script:ScheduledTasks) {
         try {
             Enable-BraveTask -Name $t.Name
         } catch {
-            Write-Log "Full restore task $($t.Name): $_" 'WARN'
+            Write-BfoLog "Full restore task $($t.Name): $_" 'WARN'
         }
     }
 
@@ -145,9 +145,9 @@ function Invoke-FullRestore {
             $svc = Get-Service -Name $s.Name -ErrorAction SilentlyContinue
             if ($svc) { Reset-BraveService -Name $s.Name -StartType $svc.StartType }
         } catch {
-            Write-Log "Full restore service $($s.Name): $_" 'WARN'
+            Write-BfoLog "Full restore service $($s.Name): $_" 'WARN'
         }
     }
 
-    Write-Log 'Full restore completed. Restart Brave to see stock behavior.' 'DONE'
+    Write-BfoLog 'Full restore completed. Restart Brave to see stock behavior.' 'DONE'
 }

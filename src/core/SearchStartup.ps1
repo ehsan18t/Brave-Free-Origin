@@ -106,40 +106,41 @@ function Resolve-Destination {
     }
 }
 
-# The Apply-*Override functions write exactly what the matching
+# The Write-*Override functions write exactly what the matching
 # Get-Desired*Override computes, the same table Preview reports, so the two
 # cannot drift apart. Each clears its values first so unticking + Apply truly
 # removes them, and a selection that cannot be applied is logged and skipped.
-function Apply-SearchEngineOverride {
+function Write-SearchEngineOverride {
     param([string]$Path, $Overrides)
     foreach ($n in $script:SearchOverrideValueNames) { [void](Remove-PolicyValue -Path $Path -Name $n) }
     try { $desired = Get-DesiredSearchOverride -Overrides $Overrides }
-    catch { Write-Log "Search override skipped: $($_.Exception.Message)" 'WARN'; return $false }
+    catch { Write-BfoLog "Search override skipped: $($_.Exception.Message)" 'WARN'; return $false }
     if ($desired.Count -eq 0) { return $false }
 
     Write-DesiredValues -Path $Path -Desired $desired
-    Write-Log "Search engine override -> $($desired['DefaultSearchProviderName'].Value)" 'OK'
+    Write-BfoLog "Search engine override -> $($desired['DefaultSearchProviderName'].Value)" 'OK'
     return $true
 }
 
-function Apply-NtpOverride {
+function Write-NtpOverride {
     param([string]$Path, $Overrides)
     [void](Remove-PolicyValue -Path $Path -Name 'NewTabPageLocation')
     try { $desired = Get-DesiredNtpOverride -Overrides $Overrides }
-    catch { Write-Log "NTP override skipped: $($_.Exception.Message)" 'WARN'; return $false }
+    catch { Write-BfoLog "NTP override skipped: $($_.Exception.Message)" 'WARN'; return $false }
     if ($desired.Count -eq 0) { return $false }
 
     Write-DesiredValues -Path $Path -Desired $desired
-    Write-Log "New tab page override -> $($desired['NewTabPageLocation'].Value)" 'OK'
+    Write-BfoLog "New tab page override -> $($desired['NewTabPageLocation'].Value)" 'OK'
     return $true
 }
 
-function Apply-StartupOverride {
+function Write-StartupOverride {
     param([string]$Path, $Overrides)
     [void](Remove-PolicyValue -Path $Path -Name 'RestoreOnStartup')
-    try { Remove-Item -Path (Join-Path $Path 'RestoreOnStartupURLs') -Recurse -Force -ErrorAction Stop } catch {}
+    try { Remove-Item -Path (Join-Path $Path 'RestoreOnStartupURLs') -Recurse -Force -ErrorAction Stop }
+    catch { Write-Verbose "No RestoreOnStartupURLs list to remove under $Path." }
     try { $startup = Get-DesiredStartupOverride -Overrides $Overrides }
-    catch { Write-Log "Startup override skipped: $($_.Exception.Message)" 'WARN'; return $false }
+    catch { Write-BfoLog "Startup override skipped: $($_.Exception.Message)" 'WARN'; return $false }
     if (-not $startup.Enabled) { return $false }
 
     Set-PolicyValue -Path $Path -Name 'RestoreOnStartup' -Type 'DWORD' -Value $startup.Code
@@ -151,9 +152,9 @@ function Apply-StartupOverride {
             Set-PolicyValue -Path $listPath -Name "$i" -Type 'STRING' -Value $u
             $i++
         }
-        Write-Log "Startup override -> code $($startup.Code), URLs: $($startup.Urls -join ', ')" 'OK'
+        Write-BfoLog "Startup override -> code $($startup.Code), URLs: $($startup.Urls -join ', ')" 'OK'
     } else {
-        Write-Log "Startup override -> $($startup.ModeId) (code $($startup.Code))" 'OK'
+        Write-BfoLog "Startup override -> $($startup.ModeId) (code $($startup.Code))" 'OK'
     }
     return $true
 }

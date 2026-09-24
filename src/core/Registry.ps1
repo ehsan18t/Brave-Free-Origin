@@ -37,10 +37,10 @@ function Export-Backup {
     $regKey = 'HKLM\Software\Policies\BraveSoftware'
     & reg.exe EXPORT $regKey $file /y 2>&1 | Out-Null
     if ($LASTEXITCODE -eq 0) {
-        Write-Log "Backup saved: $file" 'OK'
+        Write-BfoLog "Backup saved: $file" 'OK'
         return $file
     } else {
-        Write-Log "Backup skipped (no existing policies)." 'INFO'
+        Write-BfoLog "Backup skipped (no existing policies)." 'INFO'
         return $null
     }
 }

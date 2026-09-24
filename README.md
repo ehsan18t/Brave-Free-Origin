@@ -106,6 +106,8 @@ Brave-Free-Origin/
 ├── README.zh-CN.md
 ├── TRANSLATING.md          ← how to add a language
 ├── LICENSE
+├── src/                    ← the app's code, loaded by the .ps1 (keep it)
+├── tweaks/                 ← every setting the app can change, as plain data (keep it)
 ├── locales/
 │   ├── en-US.json          ← generated reference, never loaded at runtime
 │   └── zh-CN.json          ← Simplified Chinese
@@ -115,8 +117,7 @@ Brave-Free-Origin/
     └── Brave-after.png     ← memory comparison: after
 ```
 
-Deleting `locales/` is harmless — the English catalog is embedded in the
-script, so the app simply runs in English.
+Keep `src/` and `tweaks/` next to the launcher: if either is missing, the app shows which files it needs and does not start. Deleting `locales/` is harmless, because the English text ships inside `src/`, so the app simply runs in English.
 
 The launcher (`.bat`) is essentially one line: it runs the PowerShell script with `-ExecutionPolicy Bypass`. That bypass is scoped only to that single launch — it does **not** weaken your machine's PowerShell policy.
 
@@ -327,7 +328,7 @@ source:
   reversible from the same tab. They are written as ASCII, the format Windows
   expects, rather than UTF-16.
 - Every destructive operation backs up first, into `Documents\Brave-Free-Origin-Backups\`.
-- The whole thing is a single open-source `.ps1` you can read end to end.
+- The whole thing is plain open-source PowerShell you can read end to end. `Brave-Free-Origin.ps1` lists every file it loads from `src\`, and every setting it can change is listed as plain data in `tweaks\`, which is read as data and never executed.
 
 If your AV does flag it, that flag is about "a PowerShell script is writing
 policy registry values", which is the tool working as documented. Read the
@@ -559,22 +560,35 @@ Scriptlet restores use the local `list.txt.bfo-backup` files created beside Brav
 ```text
 Brave-Free-Origin/
 ├── Brave-Free-Origin.bat     # UAC-elevating launcher  ← double-click THIS
-├── Brave-Free-Origin.ps1     # Main GUI, single-file WinForms app (ASCII only)
+├── Brave-Free-Origin.ps1     # Entry point: elevates, loads src/ in order, shows the window
 ├── README.md                 # this file
 ├── README.zh-CN.md           # Simplified Chinese readme
 ├── TRANSLATING.md            # how to add a language
 ├── LICENSE
+├── src/                      # the app's code (all .ps1, ASCII only)
+│   ├── core/                 #   logic: registry, hosts, presets, preview, apply, scriptlets
+│   ├── strings/en-US.ps1     #   English string catalog, the runtime source of truth
+│   └── ui/                   #   the window, one file per area and tab
+├── tweaks/                   # what the app can change, as plain data (see tweaks/README.md)
+│   ├── policies/             #   one .psd1 per policy tab
+│   ├── system.psd1           #   Brave update tasks and services
+│   ├── hosts.psd1            #   hosts blocklist groups
+│   ├── search.psd1           #   search engines, new tab targets, startup modes
+│   └── presets.psd1          #   what each one-click mode ticks
 ├── locales/                  # UI translations, read as UTF-8 at runtime
 │   ├── en-US.json            #   generated reference, never loaded
 │   └── zh-CN.json            #   Simplified Chinese
 ├── tools/                    # maintainer scripts, not shipped to users
 │   ├── Export-EnglishLocale.ps1
-│   └── Test-Locales.ps1
+│   ├── Test-Locales.ps1
+│   └── Test-Tweaks.ps1
 └── images/
     ├── screenshot.png        # GUI preview
     ├── Brave-before.png      # Memory comparison: before
     └── Brave-after.png       # Memory comparison: after
 ```
+
+To add or change a policy, task, service, hosts group, search engine or mode, edit the matching file in `tweaks/`; [tweaks/README.md](tweaks/README.md) has the field reference and the checks to run. The load order in `Brave-Free-Origin.ps1` is the map of the code: `core` first, then the English strings, then `ui` from the top of the window to the bottom.
 
 Backups land here:
 

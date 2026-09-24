@@ -95,6 +95,8 @@ Brave-Free-Origin/
 ├── README.zh-CN.md         ← 你正在看这个
 ├── TRANSLATING.md          ← 如何添加语言
 ├── LICENSE
+├── src/                    ← 程序代码, 由 .ps1 加载 (必须保留)
+├── tweaks/                 ← 程序能修改的所有设置, 以纯数据形式列出 (必须保留)
 ├── locales/
 │   ├── en-US.json          ← 生成的参考文件, 运行时从不加载
 │   └── zh-CN.json          ← 简体中文
@@ -104,7 +106,7 @@ Brave-Free-Origin/
     └── Brave-after.png
 ```
 
-删除 `locales/` 不会有问题 —— 英文文本内嵌在脚本里, 应用会直接以英文运行。
+`src/` 和 `tweaks/` 必须和启动器放在一起: 缺少其中任何一个, 程序会列出所需的文件并拒绝启动。删除 `locales/` 不会有问题, 因为英文文本随 `src/` 一起提供, 应用会直接以英文运行。
 
 ---
 
@@ -198,7 +200,7 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ".\Brave-Free-Or
 - 注册表写入指向有公开文档的企业策略路径 `HKLM\Software\Policies\BraveSoftware\Brave` —— 与企业 IT 的做法完全一致。
 - hosts 文件修改是显式的: 写入前会在界面中列出, 使用清晰标注的哨兵块 (管理员用记事本就能查看或移除), 并且可以在同一个标签页中撤销。写入采用 Windows 期望的 ASCII 编码, 而不是 UTF-16。
 - 每一项破坏性操作前都会先备份到 `Documents\Brave-Free-Origin-Backups\`。
-- 整个程序就是一个可以从头读到尾的开源 `.ps1` 文件。
+- 整个程序是可以从头读到尾的开源 PowerShell 代码。`Brave-Free-Origin.ps1` 列出它从 `src\` 加载的每个文件, 程序能修改的每一项设置都以纯数据形式列在 `tweaks\` 中, 只作为数据读取, 从不执行。
 
 如果杀毒软件确实报警, 它针对的是“PowerShell 脚本正在写入策略注册表值”这个行为本身, 也就是本工具按文档描述在工作。你可以阅读脚本, 或者先点“预览更改” —— 它会列出所有将要进行的写入, 而不会执行其中任何一项。
 

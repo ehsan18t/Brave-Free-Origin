@@ -70,10 +70,7 @@ executed — no `Invoke-Expression`, no `Import-LocalizedData`, just
 `ConvertFrom-Json` over inert data. So a broken translation is a cosmetic
 problem, never a broken app. CI exists so you find out before your users do.
 
-**Keys are fixed.** You may only translate keys that already exist in English.
-A key CI doesn't recognise is a typo, and a typo that silently did nothing
-would be worse than a build failure. To *add* a key, the English catalog in
-`Brave-Free-Origin.ps1` has to change first — that's a maintainer change.
+**Keys are fixed.** You may only translate keys that already exist in English. A key CI doesn't recognise is a typo, and a typo that silently did nothing would be worse than a build failure. To *add* a key, the English catalog in `src\strings\en-US.ps1` has to change first, which is a maintainer change.
 
 **Placeholders must survive.** `{0}`, `{1}` and so on get replaced with live
 values. Keep every one, keep the numbers the same. You can reorder them if your
@@ -188,10 +185,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\Test-Locales.ps1
 the app itself is launched by `powershell.exe` (Windows PowerShell 5.1) and
 that is the host that has to work.
 
-Maintainers only: after changing any `Add-Strings` entry in the app, regenerate
-the translator reference and commit it. The generator parses the app's syntax
-tree and never executes it, and its output is byte-identical under both hosts,
-so CI can diff it:
+Maintainers only: after changing any `Add-Strings` entry in `src\strings\en-US.ps1`, regenerate the translator reference and commit it. The generator parses the catalog's syntax tree and never executes it, and its output is byte-identical under both hosts, so CI can diff it:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\Export-EnglishLocale.ps1

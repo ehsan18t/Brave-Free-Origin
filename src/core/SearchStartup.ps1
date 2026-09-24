@@ -68,6 +68,24 @@ function Get-DesiredStartupOverride {
     return [pscustomobject]@{ Enabled = $true; ModeId = $modeId; Code = $mode.Code; Urls = $urls }
 }
 
+# Which startup mode a stored RestoreOnStartup value means. Several modes can
+# share a code (blank page and specific pages are both 4), so the stored URL
+# list decides: a mode with a fixed URL only matches that exact URL, and any
+# other list means the user's own pages.
+function Resolve-StartupModeId {
+    param($Code, [string[]]$Urls)
+    $candidates = @($script:StartupModeIds | Where-Object { "$($script:StartupModes[$_].Code)" -eq "$Code" })
+    foreach ($id in $candidates) {
+        $mode = $script:StartupModes[$id]
+        if (-not $mode.UsesURL) { return $id }
+        if ($mode.FixedURL -and @($Urls).Count -eq 1 -and $Urls[0] -eq $mode.FixedURL) { return $id }
+    }
+    foreach ($id in $candidates) {
+        if (-not $script:StartupModes[$id].FixedURL) { return $id }
+    }
+    return $null
+}
+
 # ---- Helpers: write search-engine + startup overrides into one channel ------
 function Resolve-Destination {
     param([string]$DestinationId, [string]$CustomUrl, [string]$SearchEngineHome)

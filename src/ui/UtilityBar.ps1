@@ -278,9 +278,9 @@ $btnLoad = New-LocControl Button $utilityPanel 'util.loadState' 0 5 145 30 -OnCl
         $rc = Get-RegistryValueState -Path $loadPath -Name 'RestoreOnStartup'
         $script:ChkStartupOverride.Checked = $rc.Exists
         if ($rc.Exists) {
-            $modeId = @($script:StartupModeIds | Where-Object { $script:StartupModes[$_].Code -eq $rc.Value } | Select-Object -First 1)
-            if ($modeId.Count -gt 0) { [void](Set-ComboId -Combo $script:CmbStartupMode -Ids $script:StartupModeIds -Id $modeId[0]) }
             $urls = @(Get-RegistryNumberedValues -Path (Join-Path $loadPath 'RestoreOnStartupURLs'))
+            $modeId = Resolve-StartupModeId -Code $rc.Value -Urls $urls
+            if ($modeId) { [void](Set-ComboId -Combo $script:CmbStartupMode -Ids $script:StartupModeIds -Id $modeId) }
             if ($urls.Count -gt 0) { $script:TxtStartupUrl.Text = ($urls -join ', ') }
         }
     } finally {

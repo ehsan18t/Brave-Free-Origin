@@ -42,7 +42,7 @@ function Get-PlanLine {
 # carries the error instead. Changes counts the values Apply would really
 # write or remove; Lines are the report lines, Desired what would be written.
 function Get-OverridePlan {
-    param([string]$Path, [scriptblock]$GetDesired, $Overrides, [string[]]$Names)
+    param([string]$Path, [hashtable]$Values, [scriptblock]$GetDesired, $Overrides, [string[]]$Names)
     try { $desired = & $GetDesired $Overrides }
     catch { return [pscustomobject]@{ Error = "$_"; Lines = @(); Changes = 0; Desired = $null } }
 
@@ -51,7 +51,7 @@ function Get-OverridePlan {
     foreach ($name in $Names) {
         $wanted = $desired.Contains($name)
         $target = if ($wanted) { $desired[$name].Value } else { $null }
-        $line = Get-PlanLine -State (Get-RegistryValueState -Path $Path -Name $name) -Name $name -Wanted $wanted -Target $target
+        $line = Get-PlanLine -State (Get-TableValueState -Values $Values -Name $name) -Name $name -Wanted $wanted -Target $target
         if (-not $line) { continue }
         $lines += $line.Text
         if ($line.Verb -ne 'KEEP') { $changes++ }
@@ -61,10 +61,10 @@ function Get-OverridePlan {
 }
 
 function Get-StartupPlan {
-    param([string]$Path, $Overrides)
+    param([string]$Path, [hashtable]$Values, $Overrides)
     try {
         $startup = Get-DesiredStartupOverride -Overrides $Overrides
-        $curStartup = Get-RegistryValueState -Path $Path -Name 'RestoreOnStartup'
+        $curStartup = Get-TableValueState -Values $Values -Name 'RestoreOnStartup'
         $curUrls = @(Get-RegistryNumberedValues -Path (Join-Path $Path 'RestoreOnStartupURLs'))
         $line = Get-PlanLine -State $curStartup -Name 'RestoreOnStartup' -Wanted $startup.Enabled -Target $startup.Code
         $lines = @()
@@ -101,9 +101,11 @@ function Get-ApplyPlan {
     $overrides = $Selection.Overrides
     $channels = @(foreach ($channel in $Selection.Channels) {
         $path = $script:Channels[$channel].Path
+        # One read of the policy key for every value this channel needs.
+        $values = Get-RegistryValueTable -Path $path
         $counts = @{ ADD = 0; CHANGE = 0; CLEAR = 0; KEEP = 0 }
         $policies = @(foreach ($p in $Selection.Policies) {
-            $state = Get-RegistryValueState -Path $path -Name $p.Name
+            $state = Get-TableValueState -Values $values -Name $p.Name
             $line = Get-PlanLine -State $state -Name $p.Name -Wanted $p.Checked -Target $p.Value
             if (-not $line) { continue }
             $counts[$line.Verb]++
@@ -114,16 +116,16 @@ function Get-ApplyPlan {
             Path     = $path
             Counts   = $counts
             Policies = $policies
-            Search   = (Get-OverridePlan -Path $path -Overrides $overrides -Names $script:SearchOverrideValueNames `
+            Search   = (Get-OverridePlan -Path $path -Values $values -Overrides $overrides -Names $script:SearchOverrideValueNames `
                             -GetDesired { param($o) Get-DesiredSearchOverride -Overrides $o })
-            Ntp      = (Get-OverridePlan -Path $path -Overrides $overrides -Names @('NewTabPageLocation') `
+            Ntp      = (Get-OverridePlan -Path $path -Values $values -Overrides $overrides -Names @('NewTabPageLocation') `
                             -GetDesired { param($o) Get-DesiredNtpOverride -Overrides $o })
-            Startup  = (Get-StartupPlan -Path $path -Overrides $overrides)
+            Startup  = (Get-StartupPlan -Path $path -Values $values -Overrides $overrides)
         }
     })
 
     $tasks = @(foreach ($t in $Selection.Tasks) {
-        $task = Get-ScheduledTask -TaskName $t.Name -ErrorAction SilentlyContinue
+        $task = Get-BraveTaskState -Name $t.Name
         if (-not $task) { $verb = 'MISSING'; $text = "MISSING $($t.Name) - skipped" }
         elseif ($t.Checked) {
             if ($task.State -eq 'Disabled') { $verb = 'KEEP'; $text = "KEEP    $($t.Name) disabled" }
@@ -220,10 +222,11 @@ function New-VerifyReport {
         }
         $matchCount = 0; $missingCount = 0; $mismatchCount = 0; $tickedCount = 0
         $missingList = @(); $mismatchList = @()
+        $values = Get-RegistryValueTable -Path $path
         foreach ($p in $Selection.Policies) {
             if (-not $p.Checked) { continue }
             $tickedCount++
-            $state = Get-RegistryValueState -Path $path -Name $p.Name
+            $state = Get-TableValueState -Values $values -Name $p.Name
             if (-not $state.Exists) { $missingCount++; $missingList += $p.Name }
             elseif ("$($state.Value)" -eq "$($p.Value)") { $matchCount++ }
             else { $mismatchCount++; $mismatchList += "$($p.Name): registry=$($state.Value), expected=$($p.Value)" }

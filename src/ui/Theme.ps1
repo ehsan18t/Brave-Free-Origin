@@ -58,17 +58,18 @@ function ConvertTo-BfoColor {
     return [System.Windows.Media.ColorConverter]::ConvertFromString($Hex)
 }
 
+# These read the registry through .NET rather than the PowerShell registry
+# provider, which costs about 30 ms on its first use at startup.
 function Test-WindowsDarkMode {
-    try {
-        $value = Get-ItemPropertyValue -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name 'AppsUseLightTheme' -ErrorAction Stop
-        return ($value -eq 0)
-    } catch { return $false }
+    $value = [Microsoft.Win32.Registry]::GetValue('HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize', 'AppsUseLightTheme', $null)
+    return ($null -ne $value -and $value -eq 0)
 }
 
 # AccentColor is stored as 0xAABBGGRR. Windows' own default blue when unset.
 function Get-WindowsAccentColor {
     try {
-        $value = Get-ItemPropertyValue -Path 'HKCU:\Software\Microsoft\Windows\DWM' -Name 'AccentColor' -ErrorAction Stop
+        $value = [Microsoft.Win32.Registry]::GetValue('HKEY_CURRENT_USER\Software\Microsoft\Windows\DWM', 'AccentColor', $null)
+        if ($null -eq $value) { throw 'no accent color' }
         $bytes = [BitConverter]::GetBytes([int]$value)
         return [System.Windows.Media.Color]::FromRgb($bytes[0], $bytes[1], $bytes[2])
     } catch {
@@ -227,7 +228,7 @@ public static extern int SetCurrentProcessExplicitAppUserModelID(string appId);
 }
 
 function Get-WindowsBuild {
-    try { return [int](Get-ItemPropertyValue -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -Name 'CurrentBuildNumber' -ErrorAction Stop) }
+    try { return [int][Microsoft.Win32.Registry]::GetValue('HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion', 'CurrentBuildNumber', 0) }
     catch { return 0 }
 }
 

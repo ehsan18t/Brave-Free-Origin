@@ -11,7 +11,7 @@
 # Brave installs it. Errors are left to the caller, which knows what to log.
 function Enable-BraveTask {
     param([string]$Name)
-    $task = Get-ScheduledTask -TaskName $Name -ErrorAction SilentlyContinue
+    $task = Get-BraveTaskState -Name $Name
     if ($task -and $task.State -eq 'Disabled') {
         Enable-ScheduledTask -TaskName $Name -ErrorAction Stop | Out-Null
         Write-Log "ENABLED task $Name" 'OK'

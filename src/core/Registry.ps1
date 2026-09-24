@@ -45,6 +45,31 @@ function Export-Backup {
     }
 }
 
+# Every value under a key in one read, name -> value. Empty when the key does
+# not exist. Reading 92 policies one by one took about a quarter of a second.
+$script:RegistryProviderProperties = @('PSPath', 'PSParentPath', 'PSChildName', 'PSDrive', 'PSProvider')
+
+function Get-RegistryValueTable {
+    param([string]$Path)
+    $values = @{}
+    if (Test-Path $Path) {
+        $props = Get-ItemProperty -Path $Path -ErrorAction SilentlyContinue
+        if ($props) {
+            foreach ($p in $props.PSObject.Properties) {
+                if ($script:RegistryProviderProperties -notcontains $p.Name) { $values[$p.Name] = $p.Value }
+            }
+        }
+    }
+    return $values
+}
+
+# The same answer as Get-RegistryValueState, from a table read beforehand.
+function Get-TableValueState {
+    param([hashtable]$Values, [string]$Name)
+    if ($Values.ContainsKey($Name)) { return [pscustomobject]@{ Exists = $true; Value = $Values[$Name] } }
+    return [pscustomobject]@{ Exists = $false; Value = $null }
+}
+
 function Get-RegistryValueState {
     param([string]$Path, [string]$Name)
     if (-not (Test-Path $Path)) {

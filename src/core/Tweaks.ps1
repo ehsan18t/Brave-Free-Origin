@@ -13,15 +13,21 @@ $script:TweaksDir = Join-Path $script:AppRoot 'tweaks'
 function Import-TweakFile {
     param([string]$RelativePath)
     $path = Join-Path $script:TweaksDir $RelativePath
-    # Parse first: Import-PowerShellDataFile only says "could not be parsed",
-    # while the parser can point at the line a hand edit broke.
+    # Parsing ourselves points at the line a hand edit broke, where
+    # Import-PowerShellDataFile only says "could not be parsed".
     $tokens = $null; $parseErrors = $null
-    [void][System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$parseErrors)
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$parseErrors)
     if ($parseErrors) {
         throw "tweaks\$RelativePath, line $($parseErrors[0].Extent.StartLineNumber): $($parseErrors[0].Message)"
     }
+    # Then exactly what Import-PowerShellDataFile does with the parse, without
+    # its per-call module overhead (most of the time spent loading tweaks):
+    # SafeGetValue returns the table and refuses anything that is not literal
+    # data, so nothing in these files can ever run.
+    $table = $ast.Find({ param($node) $node -is [System.Management.Automation.Language.HashtableAst] }, $false)
+    if (-not $table) { throw "tweaks\$RelativePath - the file must hold one @{ ... } table." }
     try {
-        return Import-PowerShellDataFile -LiteralPath $path -ErrorAction Stop
+        return $table.SafeGetValue()
     } catch {
         throw "tweaks\$RelativePath - $($_.Exception.Message)"
     }

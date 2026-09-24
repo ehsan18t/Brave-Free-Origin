@@ -170,10 +170,21 @@ Write-Log "Brave version: $($script:BraveVersion)"
 Write-Log "UI locale: $($script:CurrentLocale)"
 Write-Log 'Loading current policy state...'
 
-# The worker starts loading core\ while the window paints; reading the current
-# state is queued right behind it.
+# Reading this PC takes a few dozen milliseconds, so it happens before the
+# window first paints: every switch is right from the first frame and nothing
+# is waiting on it. If it fails here, the worker reads it instead.
+$initialLoad = $false
+try {
+    Set-SelectionFromMachine (Get-BfoMachineState -Channel $script:TargetChannels[0])
+    Write-Log 'Loaded current system state.'
+    $initialLoad = $true
+} catch {
+    Write-Log "Reading the current state failed, retrying in the background: $_" 'WARN'
+}
+
+# The worker loads core\ in the background, for everything that writes.
 Start-BfoWorker
-Invoke-BfoLoadState -Quiet
+if (-not $initialLoad) { Invoke-BfoLoadState -Quiet }
 $script:JobTimer.Start()
 
 [void]$script:Window.ShowDialog()

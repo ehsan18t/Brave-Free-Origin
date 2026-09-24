@@ -39,7 +39,9 @@ function Start-BfoWorker {
     $proxy.SetVariable('BfoLogSink', $script:LogSink)
     $proxy.SetVariable('BfoProgress', $script:JobProgress)
     $script:Worker = $runspace
-    Start-BfoJob -Name 'Start' -BusyKey 'busy.starting' -Code $script:WorkerBootstrap
+    # Quiet: loading the worker changes nothing on screen, so it neither shows
+    # the busy bar nor holds up clicks. Jobs started meanwhile queue behind it.
+    Start-BfoJob -Name 'Start' -Code $script:WorkerBootstrap -Quiet
 }
 
 # Script is a scriptblock whose text runs on the worker, with Argument bound
@@ -55,6 +57,7 @@ function Start-BfoJob {
         [string]$Code,
         $Argument,
         $Tag,
+        [switch]$Quiet,
         [string]$BusyKey = 'busy.working',
         [scriptblock]$OnSuccess,
         [scriptblock]$OnError,
@@ -62,14 +65,21 @@ function Start-BfoJob {
     )
     if (-not $Code) { $Code = $Script.ToString() }
     $script:JobQueue.Enqueue([pscustomobject]@{
-        Name = $Name; Code = $Code; Argument = $Argument; Tag = $Tag; BusyKey = $BusyKey
+        Name = $Name; Code = $Code; Argument = $Argument; Tag = $Tag; BusyKey = $BusyKey; Quiet = [bool]$Quiet
         OnSuccess = $OnSuccess; OnError = $OnError; OnProgress = $OnProgress
         PowerShell = $null; Handle = $null
     })
     Step-BfoJobs
 }
 
-function Test-BfoBusy { return [bool]($script:CurrentJob -or $script:JobQueue.Count -gt 0) }
+# Busy means a job the user started is running or waiting; quiet jobs do not count.
+function Get-BfoVisibleJob {
+    if ($script:CurrentJob -and -not $script:CurrentJob.Quiet) { return $script:CurrentJob }
+    foreach ($job in $script:JobQueue) { if (-not $job.Quiet) { return $job } }
+    return $null
+}
+
+function Test-BfoBusy { return [bool](Get-BfoVisibleJob) }
 
 function Update-BusyState {
     $vm = $script:Vm
@@ -77,7 +87,7 @@ function Update-BusyState {
     $vm.IsBusy = $busy
     $vm.IsIdle = -not $busy
     $vm.BusyVisibility = ConvertTo-Visibility $busy
-    $job = if ($script:CurrentJob) { $script:CurrentJob } elseif ($script:JobQueue.Count -gt 0) { $script:JobQueue.Peek() } else { $null }
+    $job = Get-BfoVisibleJob
     $vm.BusyText = if ($job) { [string](T $job.BusyKey) } else { '' }
     Update-BarText
 }

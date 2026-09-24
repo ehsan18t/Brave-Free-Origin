@@ -9,8 +9,12 @@
 
 function Invoke-BfoPreset {
     param([string]$Preset)
-    # A running load would overwrite the preset when it finishes.
-    if (Test-BfoBusy) { return }
+    # Only jobs that rewrite the selection get in the way: a pick made while
+    # this PC's state is being read is applied as soon as the read is done,
+    # and one made during a full restore is dropped (the restore clears it).
+    $jobNames = @(@($script:CurrentJob) + @($script:JobQueue.ToArray()) | Where-Object { $_ } | ForEach-Object { $_.Name })
+    if ($jobNames -contains 'Load current state') { $script:PendingPreset = $Preset; return }
+    if ($jobNames -contains 'Full restore') { return }
     $before = Get-PendingCounts
     Set-PresetSelection -Preset $Preset
     Update-SelectionSummary
@@ -105,7 +109,10 @@ function Invoke-BfoLoadState {
         param($State)
         Set-SelectionFromMachine $State
         Write-Log 'Loaded current system state.'
-        if (-not $script:LoadQuiet) { Show-BfoToast -Severity Success -Title (T 'toast.loaded') -Message (T 'toast.loadedText') }
+        $pending = $script:PendingPreset
+        $script:PendingPreset = $null
+        if ($pending) { Invoke-BfoPreset $pending }
+        elseif (-not $script:LoadQuiet) { Show-BfoToast -Severity Success -Title (T 'toast.loaded') -Message (T 'toast.loadedText') }
     }
 }
 

@@ -36,7 +36,9 @@ function Assert-TweakField {
 # of entries and this turns it back into an id-keyed, ordered table. Each entry
 # is copied into a fresh hashtable: the UI updates some of them in place.
 function ConvertTo-TweakTable {
-    param([object[]]$Entries, [string]$LabelPrefix, [string[]]$Drop = @('Id', 'LegacyName'))
+    param([object[]]$Entries, [string]$LabelPrefix)
+    # Id becomes the table key and LegacyName only feeds the import maps.
+    $Drop = @('Id', 'LegacyName')
     $table = [ordered]@{}
     foreach ($entry in $Entries) {
         $item = @{}
@@ -118,9 +120,7 @@ function Import-Tweaks {
     # non-data-bound ComboBox and which survives re-translation intact.
     $script:SearchEngineIds       = @($script:SearchEngines.Keys)
     $script:SearchEngineLabelKeys = @($script:SearchEngineIds | ForEach-Object { $script:SearchEngines[$_].LabelKey })
-    # 'ntpDefault' stays in the data model for Load current state matching but is
-    # never offered in the new-tab dropdown (parity with v1.11).
-    $script:DestinationIds        = @($script:DestinationOptions.Keys | Where-Object { $_ -ne 'ntpDefault' })
+    $script:DestinationIds        = @($script:DestinationOptions.Keys)
     $script:DestinationLabelKeys  = @($script:DestinationIds | ForEach-Object { $script:DestinationOptions[$_].LabelKey })
     $script:StartupModeIds        = @($script:StartupModes.Keys)
     $script:StartupModeLabelKeys  = @($script:StartupModeIds | ForEach-Object { $script:StartupModes[$_].LabelKey })

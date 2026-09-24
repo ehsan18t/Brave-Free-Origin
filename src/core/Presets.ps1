@@ -102,11 +102,8 @@ function Apply-Preset {
         foreach ($cb in $script:ServiceCheckBoxes) {
             $cb.Checked = $payload.Services -contains $cb.Tag.Name
         }
-        # Hosts checkboxes (created later in the GUI; guard if not yet built)
-        if ($script:HostsCheckBoxes) {
-            foreach ($cb in $script:HostsCheckBoxes) {
-                $cb.Checked = $payload.Hosts -contains $cb.Tag.Id
-            }
+        foreach ($cb in $script:HostsCheckBoxes) {
+            $cb.Checked = $payload.Hosts -contains $cb.Tag.Id
         }
     } finally {
         Pop-SuppressSelectionEvents

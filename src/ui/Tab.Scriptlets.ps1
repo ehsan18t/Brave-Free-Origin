@@ -101,7 +101,7 @@ $script:TxtScriptletSearch.Font = New-Object System.Drawing.Font('Consolas', 8.5
 $script:TxtScriptletSearch.Add_TextChanged({ Start-ScriptletFilterDelay })
 $script:TxtScriptletSearch.Add_KeyDown({
     if ($_.KeyCode -eq 'Enter') {
-        if ($script:ScriptletFilterTimer) { $script:ScriptletFilterTimer.Stop() }
+        $script:ScriptletFilterTimer.Stop()
         Update-ScriptletListView
         $_.SuppressKeyPress = $true
     }
@@ -120,7 +120,7 @@ $script:BtnScriptletFilter = New-Object System.Windows.Forms.Button
 $script:BtnScriptletFilter.Size = New-Object System.Drawing.Size(75, 26)
 $script:BtnScriptletFilter.Location = New-Object System.Drawing.Point(465, 106)
 $script:BtnScriptletFilter.Add_Click({
-    if ($script:ScriptletFilterTimer) { $script:ScriptletFilterTimer.Stop() }
+    $script:ScriptletFilterTimer.Stop()
     Update-ScriptletListView
 })
 $scriptletsTab.Controls.Add($script:BtnScriptletFilter)

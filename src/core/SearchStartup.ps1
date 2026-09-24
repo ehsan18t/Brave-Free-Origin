@@ -66,7 +66,6 @@ function Resolve-Destination {
     if (-not $entry) { return $null }
     $code = $entry.Value
     switch ($code) {
-        '__SKIP__'   { return $null }
         '__SEARCH__' { return $SearchEngineHome }
         '__CUSTOM__' { return $CustomUrl.Trim() }
         default      { return $code }

@@ -111,19 +111,12 @@
 
     # Targets for the new tab page and the "specific page" startup mode.
     # Special values resolved at apply time: __SEARCH__ is the chosen engine's
-    # Home URL, __CUSTOM__ is the URL typed by the user, and __SKIP__ leaves
-    # the setting alone. ntpDefault is matched by Load current state but is
-    # never offered in the new tab dropdown.
+    # Home URL and __CUSTOM__ is the URL typed by the user.
     Destinations = @(
         @{
             Id         = 'blank'
             Value      = 'about:blank'
             LegacyName = 'Blank page (about:blank)'
-        },
-        @{
-            Id         = 'ntpDefault'
-            Value      = '__SKIP__'
-            LegacyName = 'Default new tab page (do not override)'
         },
         @{
             Id         = 'matchSearch'

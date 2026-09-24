@@ -32,7 +32,6 @@
     "destination.duckduckgoHome": "DuckDuckGo 首页",
     "destination.googleHome": "Google 首页",
     "destination.matchSearch": "与上面选择的搜索引擎一致",
-    "destination.ntpDefault": "默认新标签页 (不覆盖)",
     "dialog.browseUserData": "选择 Brave User Data 文件夹",
     "dialog.filter.config": "JSON 配置",
     "dialog.filter.csv": "CSV",

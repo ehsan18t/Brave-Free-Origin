@@ -16,7 +16,6 @@
 #     registry path, policy name, domain, URL or numeric value.
 $script:EnglishStrings  = @{}
 $script:LocaleStrings   = @{}
-$script:LocaleMeta      = $null
 $script:CurrentLocale   = 'en-US'
 $script:I18nBindings    = New-Object System.Collections.ArrayList
 $script:LocFontBindings = New-Object System.Collections.ArrayList
@@ -147,7 +146,6 @@ function Set-BfoLocale {
 
     if (-not $Code -or $Code -eq 'en-US') {
         $script:LocaleStrings = @{}
-        $script:LocaleMeta    = $null
         $script:CurrentLocale = 'en-US'
         return $true
     }
@@ -165,7 +163,6 @@ function Set-BfoLocale {
     }
 
     $script:LocaleStrings = $loaded.Strings
-    $script:LocaleMeta    = $loaded.Meta
     $script:CurrentLocale = $Code
     $coverage = if ($script:EnglishStrings.Count -gt 0) {
         [math]::Round(100.0 * $loaded.Strings.Count / $script:EnglishStrings.Count)

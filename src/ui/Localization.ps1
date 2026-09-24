@@ -10,31 +10,39 @@ function Set-Loc {
     param(
         $Control,
         [string]$Key,
-        [string]$Property = 'Text',
         [object[]]$FormatArgs,
         # Re-evaluated on every language switch, for arguments that are
         # themselves translated (a group name inside a counted label).
-        [scriptblock]$ArgsScript,
-        [switch]$Fit,
-        [int]$MinWidth = 0
+        [scriptblock]$ArgsScript
     )
     if ($ArgsScript) { $FormatArgs = @(& $ArgsScript) }
-    $Control.$Property = T $Key $FormatArgs
-    [void]$script:I18nBindings.Add([pscustomobject]@{
-        Kind = 'Property'; Control = $Control; Property = $Property
+    $binding = [pscustomobject]@{
+        Kind = 'Property'; Control = $Control; Property = 'Text'
         Key  = $Key;       Args    = $FormatArgs; ArgsScript = $ArgsScript
-        Fit  = [bool]$Fit; MinWidth = $MinWidth
-    })
-    if ($Fit) { Resize-ToText -Control $Control -MinWidth $MinWidth }
+    }
+    Update-LocBinding $binding
+    [void]$script:I18nBindings.Add($binding)
     return $Control
 }
 
 function Set-LocTooltip {
-    param($Control, [string]$Key, [object[]]$FormatArgs)
-    if ($script:ToolTip) { $script:ToolTip.SetToolTip($Control, (T $Key $FormatArgs)) }
-    [void]$script:I18nBindings.Add([pscustomobject]@{
-        Kind = 'Tooltip'; Control = $Control; Key = $Key; Args = $FormatArgs
-    })
+    param($Control, [string]$Key)
+    $binding = [pscustomobject]@{ Kind = 'Tooltip'; Control = $Control; Key = $Key; Args = $null }
+    Update-LocBinding $binding
+    [void]$script:I18nBindings.Add($binding)
+}
+
+# Writes one binding's current translation onto its control. Shared by the
+# first bind and by every language switch, so both always agree.
+function Update-LocBinding {
+    param($Binding)
+    if ($Binding.Kind -eq 'Tooltip') {
+        if ($script:ToolTip) { $script:ToolTip.SetToolTip($Binding.Control, (T $Binding.Key $Binding.Args)) }
+        return
+    }
+    $bindArgs = $Binding.Args
+    if ($Binding.ArgsScript) { $bindArgs = @(& $Binding.ArgsScript) }
+    $Binding.Control.($Binding.Property) = T $Binding.Key $bindArgs
 }
 
 # Fonts have to be re-resolved on every language switch, not only at build
@@ -58,14 +66,6 @@ function Update-LocalizedFonts {
     }
 }
 
-function Resize-ToText {
-    param($Control, [int]$MinWidth = 0, [int]$Padding = 24)
-    try {
-        $measured = [System.Windows.Forms.TextRenderer]::MeasureText($Control.Text, $Control.Font)
-        $Control.Width = [Math]::Max($MinWidth, $measured.Width + $Padding)
-    } catch { }
-}
-
 # A language switch is a pure re-text: it must not move one checkbox, one
 # combo selection or the active preset. Relabelling a ComboBox means
 # Items.Clear() + refill, which WinForms reports as a user selection change,
@@ -76,16 +76,7 @@ function Update-UiLanguage {
     Push-SuppressSelectionEvents
     try {
         foreach ($binding in $script:I18nBindings) {
-            try {
-                if ($binding.Kind -eq 'Tooltip') {
-                    $script:ToolTip.SetToolTip($binding.Control, (T $binding.Key $binding.Args))
-                    continue
-                }
-                $bindArgs = $binding.Args
-                if ($binding.ArgsScript) { $bindArgs = @(& $binding.ArgsScript) }
-                $binding.Control.($binding.Property) = T $binding.Key $bindArgs
-                if ($binding.Fit) { Resize-ToText -Control $binding.Control -MinWidth $binding.MinWidth }
-            } catch { }
+            try { Update-LocBinding $binding } catch { }
         }
         Update-LocalizedFonts
         Update-LocalizedCombos
@@ -187,7 +178,6 @@ function Set-ModeButtonRow {
         if ($total -le $available) { break }
         $padding -= 4
     }
-    if ($padding -lt 8) { $padding = 8 }
 
     $x = 14
     foreach ($btn in $buttons) {
@@ -217,6 +207,5 @@ function Get-BfoUiFont {
 }
 
 # CJK needs more vertical room at the same point size.
-function Get-PolicyRowHeight { if ($script:CurrentLocale -like 'zh-*') { return 36 } else { return 28 } }
 function Get-PolicyDescHeight { if ($script:CurrentLocale -like 'zh-*') { return 34 } else { return 30 } }
 function Get-PolicyDescFontSize { if ($script:CurrentLocale -like 'zh-*') { return 9 } else { return 8 } }

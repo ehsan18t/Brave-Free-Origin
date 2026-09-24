@@ -95,11 +95,10 @@ function ConvertTo-ScriptletRecord {
     if ($rule.StartsWith('!')) { return $null }
     if ($rule -notmatch '##\+js\((?<body>.*)\)') { return $null }
 
+    # The regex above guarantees the marker is present.
     $marker = $rule.IndexOf('##+js(', [System.StringComparison]::Ordinal)
-    if ($marker -lt 0) { return $null }
     $domain = $rule.Substring(0, $marker)
     $body = $Matches.body
-    $scriptlet = $body
     $arguments = ''
     $comma = $body.IndexOf(',')
     if ($comma -ge 0) {
@@ -125,10 +124,7 @@ function ConvertTo-ScriptletRecord {
 }
 
 function Get-ScriptletListFiles {
-    param(
-        [string]$Root,
-        [System.Collections.IList]$Warnings = $null
-    )
+    param([string]$Root)
 
     if ([string]::IsNullOrWhiteSpace($Root)) { throw 'User Data folder is empty.' }
     if (-not (Test-Path $Root)) { throw "User Data folder not found: $Root" }
@@ -139,35 +135,10 @@ function Get-ScriptletListFiles {
         try {
             $files += Get-ChildItem -Path $dir.FullName -Recurse -Filter 'list.txt' -File -ErrorAction Stop
         } catch {
-            $warning = "Scriptlet scan skipped $($dir.FullName): $_"
-            if ($Warnings) { [void]$Warnings.Add($warning) } else { Write-Log $warning 'WARN' }
+            Write-Log "Scriptlet scan skipped $($dir.FullName): $_" 'WARN'
         }
     }
     return @($files | Sort-Object FullName)
-}
-
-function Get-ScriptletRules {
-    param(
-        [string]$Root,
-        [System.Collections.IList]$Warnings = $null
-    )
-
-    $records = New-Object System.Collections.Generic.List[object]
-    $files = Get-ScriptletListFiles -Root $Root -Warnings $Warnings
-    foreach ($file in $files) {
-        try {
-            $lineNo = 0
-            foreach ($line in [System.IO.File]::ReadLines($file.FullName)) {
-                $lineNo++
-                $record = ConvertTo-ScriptletRecord -File $file.FullName -Root $Root -Line $line -LineNumber $lineNo
-                if ($record) { [void]$records.Add($record) }
-            }
-        } catch {
-            $warning = "Scriptlet scan failed $($file.FullName): $_"
-            if ($Warnings) { [void]$Warnings.Add($warning) } else { Write-Log $warning 'WARN' }
-        }
-    }
-    return @($records.ToArray())
 }
 
 function Backup-ScriptletFile {

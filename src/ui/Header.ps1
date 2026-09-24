@@ -62,7 +62,6 @@ if ($detectedChannels.Count -gt 1) {
     $script:ChannelLabelKeys += 'header.allChannels'
 }
 Update-ChannelComboLabels
-$script:ChannelCombo.SelectedIndex = 0
 $header.Controls.Add($script:ChannelCombo)
 
 $script:TargetPathLabel = New-Object System.Windows.Forms.Label

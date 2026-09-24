@@ -116,7 +116,6 @@ foreach ($cat in $script:Policies.Keys) {
                     [void](Set-PolicyChoiceId -Policy $p -ChoiceId $cid); break
                 }
             }
-            if ($combo.SelectedIndex -lt 0) { $combo.SelectedIndex = 0 }
             $combo.Tag = $p
             # Gated: relabelling the picker for a new language clears and
             # refills Items, which would otherwise land here with a transient

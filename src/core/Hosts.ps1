@@ -78,10 +78,8 @@ function Clear-HostsBlock {
 
 function Get-SelectedHostsDomains {
     $domains = @()
-    if ($script:HostsCheckBoxes) {
-        foreach ($cb in $script:HostsCheckBoxes) {
-            if ($cb.Checked) { $domains += $cb.Tag.Domains }
-        }
+    foreach ($cb in $script:HostsCheckBoxes) {
+        if ($cb.Checked) { $domains += $cb.Tag.Domains }
     }
     return @($domains | Sort-Object -Unique)
 }

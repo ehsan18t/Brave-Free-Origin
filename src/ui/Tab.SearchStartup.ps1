@@ -48,7 +48,6 @@ $script:CmbSearchEngine.Location = New-Object System.Drawing.Point(95, 47)
 $script:CmbSearchEngine.Size = New-Object System.Drawing.Size(200, 22)
 $script:CmbSearchEngine.DropDownStyle = 'DropDownList'
 Set-ComboLabels -Combo $script:CmbSearchEngine -Ids $script:SearchEngineIds -LabelKeys $script:SearchEngineLabelKeys
-$script:CmbSearchEngine.SelectedIndex = 0
 $secSearch.Controls.Add($script:CmbSearchEngine)
 
 $lblCustomSearch = New-Object System.Windows.Forms.Label
@@ -105,7 +104,6 @@ $script:CmbNtpDest.Location = New-Object System.Drawing.Point(85, 47)
 $script:CmbNtpDest.Size = New-Object System.Drawing.Size(310, 22)
 $script:CmbNtpDest.DropDownStyle = 'DropDownList'
 Set-ComboLabels -Combo $script:CmbNtpDest -Ids $script:DestinationIds -LabelKeys $script:DestinationLabelKeys
-$script:CmbNtpDest.SelectedIndex = 0
 $secNtp.Controls.Add($script:CmbNtpDest)
 
 $lblNtpCustom = New-Object System.Windows.Forms.Label
@@ -154,7 +152,6 @@ $script:CmbStartupMode.Location = New-Object System.Drawing.Point(85, 47)
 $script:CmbStartupMode.Size = New-Object System.Drawing.Size(310, 22)
 $script:CmbStartupMode.DropDownStyle = 'DropDownList'
 Set-ComboLabels -Combo $script:CmbStartupMode -Ids $script:StartupModeIds -LabelKeys $script:StartupModeLabelKeys
-$script:CmbStartupMode.SelectedIndex = 0
 $secStartup.Controls.Add($script:CmbStartupMode)
 
 $lblStartUrl = New-Object System.Windows.Forms.Label

@@ -54,7 +54,7 @@ The row description is the string `policy.<Name>.description`.
 
 ## Search & Startup (`search.psd1`)
 
-`Engines`, `Destinations` and `StartupModes` are lists; their order is the dropdown order. Labels are `engine.<Id>`, `destination.<Id>` and `startupMode.<Id>`. Engine `URL` and `Suggest` use Chromium's `{searchTerms}` placeholder. Destination values `__SEARCH__`, `__CUSTOM__` and `__SKIP__` are resolved when the settings are applied. A startup mode's `Code` is the `RestoreOnStartup` policy value.
+`Engines`, `Destinations` and `StartupModes` are lists; their order is the dropdown order. Labels are `engine.<Id>`, `destination.<Id>` and `startupMode.<Id>`. Engine `URL` and `Suggest` use Chromium's `{searchTerms}` placeholder. Destination values `__SEARCH__` (the chosen engine's home page) and `__CUSTOM__` (the URL typed by the user) are resolved when the settings are applied. A startup mode's `Code` is the `RestoreOnStartup` policy value.
 
 ## Presets (`presets.psd1`)
 

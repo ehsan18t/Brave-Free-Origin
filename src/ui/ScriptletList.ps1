@@ -91,13 +91,10 @@ function Set-ScriptletUiBusy {
     [System.Windows.Forms.Application]::DoEvents()
 }
 
+# Restarts the search debounce (the timer is created with the tab).
 function Start-ScriptletFilterDelay {
-    if ($script:ScriptletFilterTimer) {
-        $script:ScriptletFilterTimer.Stop()
-        $script:ScriptletFilterTimer.Start()
-    } else {
-        Update-ScriptletListView
-    }
+    $script:ScriptletFilterTimer.Stop()
+    $script:ScriptletFilterTimer.Start()
 }
 
 function Get-ScriptletRecordKey {
@@ -177,18 +174,10 @@ function Start-ScriptletRender {
         Stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     }
 
-    if ($script:ScriptletProgress) {
-        $script:ScriptletProgress.Visible = $true
-        $script:ScriptletProgress.Style = 'Continuous'
-        $script:ScriptletProgress.Value = 0
-    }
-    if ($script:LblScriptletStatus) {
-        $script:LblScriptletStatus.Text = T 'scriptlet.statusRender0' @($Rows.Count)
-    }
+    if ($script:ScriptletProgress) { $script:ScriptletProgress.Value = 0 }
 
     if ($Rows.Count -eq 0) {
         Stop-ScriptletRender
-        if ($script:ScriptletProgress) { $script:ScriptletProgress.Value = 0 }
         Update-ScriptletStatusText -Shown 0
         Set-ScriptletUiBusy $false
         return
@@ -209,13 +198,8 @@ function Step-ScriptletRender {
         return
     }
 
+    # Start-ScriptletRender never starts the timer for an empty row set.
     $total = $state.Rows.Count
-    if ($total -eq 0) {
-        Stop-ScriptletRender
-        Update-ScriptletStatusText -Shown 0
-        return
-    }
-
     $startTick = [Environment]::TickCount64
     $batch = New-Object System.Collections.Generic.List[System.Windows.Forms.ListViewItem]
     while ($state.Index -lt $total -and (([Environment]::TickCount64 - $startTick) -lt 25) -and $batch.Count -lt 400) {
@@ -327,11 +311,7 @@ function Update-ScriptletScanProgress {
     $percent = if ($state.TotalBytes -gt 0) { [int](($doneBytes * 1000L) / $state.TotalBytes) } else { 0 }
     $percent = [Math]::Max(0, [Math]::Min(1000, $percent))
 
-    if ($script:ScriptletProgress) {
-        $script:ScriptletProgress.Visible = $true
-        $script:ScriptletProgress.Style = 'Continuous'
-        $script:ScriptletProgress.Value = $percent
-    }
+    if ($script:ScriptletProgress) { $script:ScriptletProgress.Value = $percent }
 
     if ($script:LblScriptletStatus) {
         if ([string]::IsNullOrWhiteSpace($Message)) {
@@ -368,11 +348,7 @@ function Complete-ScriptletScan {
     $script:ScriptletRules = @($state.Records.ToArray())
     foreach ($warning in @($state.Warnings)) { Write-Log $warning 'WARN' }
 
-    if ($script:ScriptletProgress) {
-        $script:ScriptletProgress.Visible = $true
-        $script:ScriptletProgress.Style = 'Continuous'
-        $script:ScriptletProgress.Value = 1000
-    }
+    if ($script:ScriptletProgress) { $script:ScriptletProgress.Value = 1000 }
 
     $elapsed = [Math]::Round($state.Stopwatch.Elapsed.TotalSeconds, 1)
     $root = $state.Root
@@ -462,7 +438,7 @@ function Invoke-ScriptletScan {
     try {
         Set-ScriptletUiBusy $true (T 'scriptlet.statusFinding')
         $warnings = New-Object System.Collections.ArrayList
-        $files = @(Get-ScriptletListFiles -Root $root -Warnings $warnings)
+        $files = @(Get-ScriptletListFiles -Root $root)
         if ($files.Count -eq 0) {
             Set-ScriptletUiBusy $false
             if ($script:ScriptletProgress) { $script:ScriptletProgress.Value = 0 }
@@ -495,11 +471,6 @@ function Invoke-ScriptletScan {
             Stopwatch      = [System.Diagnostics.Stopwatch]::StartNew()
         }
 
-        if ($script:ScriptletProgress) {
-            $script:ScriptletProgress.Visible = $true
-            $script:ScriptletProgress.Style = 'Continuous'
-            $script:ScriptletProgress.Value = 0
-        }
         Update-ScriptletScanProgress (T 'scriptlet.statusFound' @($files.Count))
         Write-Log "Scriptlet scan started: $root ($($files.Count) list file(s), $([Math]::Round($totalBytes / 1MB, 2)) MB)" 'INFO'
 

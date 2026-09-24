@@ -128,10 +128,9 @@ function Update-ConfigurationFilter {
             }
         }
 
-        # Pass 2 - headers follow their group, trailers always stay.
+        # Pass 2 - headers follow their group. Trailers are never hidden.
         foreach ($entry in $flow.Entries) {
-            if ($entry.Kind -eq 'Header')  { $entry.Visible = [bool]$groupHasVisible[$entry.Group] }
-            if ($entry.Kind -eq 'Trailer') { $entry.Visible = $true }
+            if ($entry.Kind -eq 'Header') { $entry.Visible = [bool]$groupHasVisible[$entry.Group] }
         }
 
         # Pass 3 - re-flow.

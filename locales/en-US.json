@@ -33,7 +33,6 @@
     "destination.duckduckgoHome": "DuckDuckGo homepage",
     "destination.googleHome": "Google homepage",
     "destination.matchSearch": "Match the search engine I picked above",
-    "destination.ntpDefault": "Default new tab page (do not override)",
     "dialog.browseUserData": "Select Brave User Data folder",
     "dialog.filter.config": "JSON config",
     "dialog.filter.csv": "CSV",

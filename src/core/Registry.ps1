@@ -34,7 +34,7 @@ function Export-Backup {
     if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
     $file = Join-Path $dir "brave-policies-backup-$stamp.reg"
     $regKey = 'HKLM\Software\Policies\BraveSoftware'
-    $result = & reg.exe EXPORT $regKey $file /y 2>&1
+    & reg.exe EXPORT $regKey $file /y 2>&1 | Out-Null
     if ($LASTEXITCODE -eq 0) {
         Write-Log "Backup saved: $file" 'OK'
         return $file

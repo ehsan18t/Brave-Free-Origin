@@ -296,7 +296,6 @@ Add-Strings @{
     'destination.duckduckgoHome'  = 'DuckDuckGo homepage'
     'destination.googleHome'      = 'Google homepage'
     'destination.matchSearch'     = 'Match the search engine I picked above'
-    'destination.ntpDefault'      = 'Default new tab page (do not override)'
     'engine.bing'                 = 'Bing'
     'engine.brave'                = 'Brave Search'
     'engine.custom'               = 'Custom...'

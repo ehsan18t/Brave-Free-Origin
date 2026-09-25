@@ -10,7 +10,7 @@ It is inspired by [MulesGaming/brave-debullshitinator](https://github.com/MulesG
 
 ![Brave Free Origin GUI](images/screenshot.png)
 
-**New in v2.0:** a completely new interface. The app now looks and behaves like a Windows 11 app: side navigation, setting cards with switches, light and dark themes that follow Windows, and a window that stays responsive while it reads or writes your system. The changelog below has the details. The interface is translatable (Simplified Chinese included); see [TRANSLATING.md](TRANSLATING.md) if you want to add your language. It is one JSON file, no PowerShell required.
+**New in v2.0:** every setting was checked against the Brave and Chromium source code. Dead settings are gone, missing ones were added, and the modes were rebuilt: Default, an exact copy of Brave Origin, Recommended, Strict and a Max mode that forgets you when Brave closes. There is a new Flags page for a few long-lived brave://flags entries, and the Home page warns you when something you applied stopped being in effect. The changelog below has the details. The interface is translatable; see [TRANSLATING.md](TRANSLATING.md) if you want to add your language. It is one JSON file, no PowerShell required.
 
 ---
 
@@ -30,15 +30,15 @@ That is the launcher. It opens PowerShell with the right execution-policy flag a
 
 **5. Pick a mode** from the cards on the Home page:
 
-| Card | What it does |
-|---|---|
-| **Quick Debloat** | Lightest cleanup. Removes the loudest extras (Rewards, Wallet, VPN, AI, password manager). Safest. |
-| **Recommended** | Sensible daily-driver setup. Good privacy + lighter UI + media-friendly defaults. |
-| **Origin Mode** | The free local answer to Brave's paywalled "Origin" build. |
-| **Privacy + Boost** | Origin Mode + startup and latency tuning. The performance default. |
-| **Max Performance** | Origin + Boost + Max Privacy unioned + extra UI trims. Aggressive. |
-| **Max Privacy** | Hard lockdown: disables sync, sign-in, imports, Brave update services. |
-| **Stock / None** | Turns every switch off. Click `Apply to Brave` after to revert to default Brave. |
+| Card            | What it does                                                                                                                                                                                                                 |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Default**     | Brave as a fresh install leaves it. Turns every switch off, so `Apply to Brave` removes everything this app set.                                                                                                             |
+| **Origin**      | A copy of the paid Brave Origin: the same 16 features turned off (Leo, Rewards and Ads, Wallet, VPN, News, Talk, Tor, Wayback, Speedreader, Playlist, Email Aliases, PSST, local AI, Web Discovery, P3A and the usage ping). |
+| **Recommended** | Origin, plus telemetry and promos off and Brave's tracking protections locked on. Nothing breaks, and you keep passwords, sync and updates.                                                                                  |
+| **Strict**      | Recommended, plus HTTPS only, no permission prompts, WebRTC IP protection, Cast off and three anti-fingerprinting flags. Keeps your logins and history; a few sites need an exception.                                       |
+| **Max**         | Strict, plus Brave forgets you: history is never saved, cookies last one session, and closing Brave wipes cookies, cache, saved passwords and autofill. Bookmarks, settings and extensions stay. For shared or public PCs.   |
+
+Each mode builds on the one before it. No mode touches Brave's updates: the `System` page and the component-update hosts group are for manual use only.
 
 Picking a mode only changes the switches. Nothing is written until you apply.
 
@@ -48,7 +48,9 @@ There is also a `Default Scriptlets (Advanced)` page. That is a separate optiona
 
 **7. Click `Preview changes`** in the bottom bar before applying. It opens on **What will happen**: the changes in plain language, grouped by what they do (features removed, less data sent, faster and lighter, and so on), with warnings for side effects such as Brave no longer updating itself or sync turning off. **Technical details** has the exact registry values that will be added, changed or cleared. Nothing is written from Preview.
 
-**8. Click `Apply to Brave`** (bottom right). Then **fully close and reopen Brave**: running tabs need a restart to pick up the new policies.
+**8. Click `Apply to Brave`** (bottom right). Then **fully close and reopen Brave**: running tabs need a restart to pick up the new policies. Flags are written into Brave's own Local State file, which Brave rewrites when it closes, so they can only be applied while Brave is closed. If it is running, Apply asks whether to apply everything else now and leave the flags for the next Apply.
+
+**8a. Watch for the warning on Home.** Every Apply remembers what it set. When the app opens, it compares that with the PC and shows a warning on Home if something changed back (a Brave update, another tool, a hand edit) or if Brave no longer supports a setting. **Re-apply** writes the reverted settings again, **Clean up** removes the ones Brave dropped, and **Keep as is** accepts the current state. A setting that is re-applied and then undone again is marked as something that keeps changing it back, such as another tweak tool or a Group Policy.
 
 **8b. (Optional) Find a setting.** Type in **Find a setting** at the top of the side navigation, or press `Ctrl+F`. It searches every policy, task, service and hosts group on every page at once, by name, description, category or domain: `password`, `telemetry`, `BraveVPNDisabled`. Matches show as one list grouped by page, and they are the real settings, so flipping one there flips it on its own page too. Turn on **Selected only** to see just what is switched on, or use **Review selected** on Home after picking a mode to see exactly what that preset is about to enforce. `Esc` clears the search. `Search & Startup` and `Default Scriptlets` are not part of it; the scriptlet page has its own search box, built for tens of thousands of rules.
 
@@ -58,15 +60,15 @@ There is also a `Default Scriptlets (Advanced)` page. That is a separate optiona
 
 Open **Settings** and pick a **Language**. The change is live, with no restart, and is remembered in `%LOCALAPPDATA%\Brave-Free-Origin\settings.json`.
 
-You can also force it from the command line, which is handy for testing:
+The app currently ships in English only. When a translation is added to `locales/`, you can also force it from the command line, which is handy for testing:
 
 ```powershell
-.\Brave-Free-Origin.ps1 -Lang zh-CN
+.\Brave-Free-Origin.ps1 -Lang de-DE
 ```
 
 If you never touch the picker, the app follows your Windows display language. Resolution order is: `-Lang`, then the saved preference, then the Windows UI culture, then a same-language file, then English.
 
-The same-language step will not cross writing systems. A `zh-CN`, `zh-SG` or `zh-Hans-*` Windows gets Simplified Chinese; a `zh-TW`, `zh-HK`, `zh-MO` or `zh-Hant-*` Windows stays in **English** unless a Traditional Chinese locale file is actually installed, because Simplified text is not a usable substitute. You can always pick any installed language in Settings.
+The same-language step will not cross writing systems: for Chinese, a Simplified file is never served to a Traditional Chinese Windows, which stays in English instead. You can always pick any installed language in Settings.
 
 Diagnostic output stays in English on purpose: the Activity log, the **Preview changes** report and the **Verify** report. That way a translated install still produces bug reports the maintainer can read. A handful of on-screen strings are also deliberately untranslated (policy names, scheduled task and service names, registry paths, domains, URLs, raw filter rules and scriptlet identifiers), because they are things you cross-check against `brave://policy`, `services.msc` or Brave's own filter lists.
 
@@ -81,14 +83,12 @@ Brave-Free-Origin/
 ├── Brave-Free-Origin.bat   ← double-click THIS one
 ├── Brave-Free-Origin.ps1   ← never double-click this (opens in Notepad)
 ├── README.md               ← you are here
-├── README.zh-CN.md
 ├── TRANSLATING.md          ← how to add a language
 ├── LICENSE
 ├── src/                    ← the app's code, loaded by the .ps1 (keep it)
 ├── tweaks/                 ← every setting the app can change, as plain data (keep it)
 ├── locales/
-│   ├── en-US.json          ← generated reference, never loaded at runtime
-│   └── zh-CN.json          ← Simplified Chinese
+│   └── en-US.json          ← generated reference, never loaded at runtime
 └── images/
     ├── screenshot.png      ← GUI preview shown above
     ├── Brave-before.png    ← memory comparison: before
@@ -103,6 +103,23 @@ The launcher (`.bat`) is essentially one line: it runs the PowerShell script wit
 
 <details>
 <summary><strong>📜 Changelog (click to expand)</strong></summary>
+
+### What's new in v2.1
+
+Every setting checked against the source, new modes, flags, and a warning when applied settings stop being in effect.
+
+- **Checked against the source.** Every policy was compared with Chromium 154 and brave-core 1.98. `tools\known-policies.psd1` records the verified names, and `Test-Tweaks.ps1` fails when a setting uses a name or version range that is not in it.
+- **Dead settings removed.** Settings that did nothing in Brave are gone: `WebTorrentDisabled`, `IPFSEnabled` and `ReadingListEnabled` (no longer policies), `MediaRouterEnabled` (the real name is `EnableMediaRouter`, so Cast was never actually turned off), expired Chromium policies (Cloud Print, Chrome Cleanup, the OS upgrade welcome page, Tab Organizer, `SigninAllowed`, `PromotionalTabsEnabled`), and Chromium AI and Lens policies for features Brave builds out. Apply removes these values if an earlier version wrote them.
+- **New settings.** Local AI, Email Aliases and PSST (the three Brave Origin disables that were missing), `PromotionsEnabled`, WebRTC IP handling, eight site permission defaults, and a new History and Site Data page (never save history, session-only cookies, wipe data on exit).
+- **New modes.** Default, Origin, Recommended, Strict and Max replace the seven old modes. Old config files still import: Stock becomes Default, Quick Debloat becomes Origin, Privacy + Boost becomes Recommended, and Max Performance and Max Privacy become Strict. An old config never lands on Max, because Max wipes data.
+- **Every Brave channel shares one policy key.** Brave reads `HKLM\Software\Policies\BraveSoftware\Brave` for Stable, Beta, Nightly and Dev alike, so the channel picker is gone. The `Brave-Beta`, `Brave-Nightly` and `Brave-Dev` keys earlier versions wrote were never read by Brave; Apply removes them.
+- **Flags page.** Nine brave://flags entries that do something useful and have been in Brave for at least a year (since 1.85 or earlier). They are written to each installed channel's Local State, only while that channel is closed, with a backup first.
+- **Warnings when settings stop being in effect.** Apply records what it set in `%ProgramData%\Brave-Free-Origin\applied.json`. When the app opens, a warning on Home lists anything reverted, anything that keeps coming back after a re-apply, and anything the installed Brave no longer supports, with Re-apply, Clean up and Keep as is.
+- **Brave's default on every setting.** Each card says whether ticking it changes Brave's default or only locks it. Settings the installed Brave does not support yet are greyed out with the version they need.
+- **One place for startup settings.** Startup, homepage and new tab settings are only on the Search & Startup page, which gained a Homepage section.
+- **Fixed hosts groups.** P3A now blocks the STAR servers it actually uses, the usage ping blocks `usage-ping.brave.com`, and Web Discovery blocks its four real servers. `go-updater.brave.com`, which serves Shields filter-list and component updates, moved from the Variations group into Component Updates. No mode ticks Variations or Component Updates any more.
+- **System page.** The Brave Elevation Service is no longer listed: Chromium uses it to decrypt cookies and saved passwords, so disabling it signed people out of sites. VPN services are found for every channel. No mode changes this page.
+- **English only for now.** The Simplified Chinese translation was removed; the translation system stays for new languages.
 
 ### What's new in v2.0
 
@@ -353,29 +370,30 @@ That means it is not just hiding buttons visually. It is using the same managed-
 
 Because this tool writes real enterprise policies under `HKLM\Software\Policies\BraveSoftware\Brave`, Brave will show a **"Managed by your organization"** entry in its menu and on `brave://management` for as long as any policy is applied. This is a Chromium transparency feature: any browser with active machine-level policies shows it. There is **no supported way to keep the policies but hide the note** — Brave declined to add one, so attempting to force it off would mean unsupported hacks that can break the policy system. The only clean way to remove the note is to remove the policies (untick everything and Apply, or use the built-in reset/restore). This is by design, not a bug.
 
+Every Brave channel (Stable, Beta, Nightly, Dev) reads this one key, so they all get the same policies. The few brave://flags entries on the Flags page are written to each installed channel's own Local State instead.
+
 It can disable or reduce:
 
-- Leo / AI and Chromium GenAI features
-- Brave Rewards
-- Brave Wallet / crypto / Web3 extras
-- Brave VPN
-- Brave News
-- Brave Talk
-- Playlist / Speedreader / Tor / IPFS / WebTorrent
-- P3A analytics, stats pings, Web Discovery, UMA metrics
-- background mode, prediction, media router, misc telemetry
-- first-run import nags, promo tabs, and other clutter
-- Brave update tasks and services in the aggressive modes
+- Leo and Brave's on-device AI models
+- Brave Rewards and Brave Ads
+- Brave Wallet
+- Brave VPN, Brave News, Brave Talk, Email Aliases, PSST
+- Playlist, Speedreader, Tor windows, the Wayback Machine prompt
+- P3A analytics, the usage ping, Web Discovery, usage and crash reports
+- background mode, link preloading, casting, WebRTC local IP exposure
+- permission prompts: notifications, location, sensors, USB, Bluetooth, HID, serial ports, local fonts
+- first-run import offers, promotions and other clutter
+- browsing history, cookies and site data, if you want Brave to forget you (Max mode)
+- Brave update tasks and services, by hand on the System page (no mode does this)
 
-It can also tune Brave for a lighter footprint:
+It can also tune Brave:
 
-- QUIC / HTTP3 on
-- hardware acceleration: pick Enable (1) or Disable (0) from the picker next to its switch (Disable is handy for buggy GPU drivers / artifacts)
-- memory saver on
-- lighter startup behavior
-- blank homepage / blank new tab in the performance modes
-- disk cache cap
-- less background browser noise
+- hardware acceleration and QUIC (HTTP/3): pick Enable or Disable from the picker next to the switch (disabling hardware acceleration helps with buggy GPU drivers)
+- Memory Saver and Energy Saver on
+- a disk cache cap
+- the search engine, new tab page, homepage and startup behavior, on the Search & Startup page
+
+Each setting says whether ticking it changes Brave's default or only locks the default in place, and settings the installed Brave is too old for are greyed out.
 
 v1.9 also adds an optional advanced scriptlet manager. It can view and manually disable Brave's built-in adblock scriptlet rules in component filter lists. This is intentionally separate from the normal policy system and is only for users who choose to open the advanced page and accept the warnings.
 
@@ -487,8 +505,8 @@ Then do a real-world check:
 
 - Leo should be gone or disabled
 - Rewards / Wallet / VPN / News UI should be reduced or removed depending on mode
-- startup should feel lighter in the performance modes
-- update services/tasks should only be disabled in the aggressive modes
+- `brave://flags` should show the flags you applied as Enabled or Disabled
+- update services and tasks are only disabled if you did it yourself on the System page
 
 The in-app `Verify` report can be copied or saved to a text file. That is useful if Brave's UI still looks wrong but `brave://policy` says the registry policy is applied correctly.
 
@@ -510,16 +528,17 @@ To preview a change before committing it:
 To fully restore stock behavior:
 
 1. Re-run the app and open **Settings**
-2. Pick the Brave channel, or `All installed channels`
-3. Click `Full restore / stock`
+2. Click `Full restore / stock`
 
-That removes Brave policy keys, clears the Brave-Free-Origin hosts block, re-enables known Brave update tasks, and resets known disabled Brave services to Manual.
+That removes the Brave policy key, the flags this app manages (for every channel that is closed), the Brave-Free-Origin hosts block and the record of the last apply, re-enables Brave update tasks, and resets disabled Brave services to Manual.
 
-For a lighter policy-only revert:
+For a lighter revert:
 
-1. Use `Stock / None`
+1. Use the `Default` mode
 2. Click `Preview changes`
 3. Click `Apply to Brave`
+
+Local State backups (made before flags are written) land in the same backup folder; to undo a flags change by hand, close Brave and copy the backup back over `Local State`.
 
 Or:
 
@@ -540,10 +559,10 @@ Scriptlet restores use the local `list.txt.bfo-backup` files created beside Brav
 
 ## Caveats
 
-- `Origin Mode` is meant to mimic the stripped-down Brave Origin idea, but it is still doing it through Windows policies, not through a custom Brave build.
-- `Max Performance` is aggressive on purpose. It disables more convenience features and Brave updater services/tasks to cut overhead further.
-- `Max Privacy` is even harsher in some areas and can affect sign-in, sync, imports, component updates, and update flow.
-- Turning off component updates can break Widevine/DRM playback such as Netflix or some Spotify web playback scenarios.
+- `Origin` turns off the same 16 features as the paid Brave Origin, through Windows policies rather than a separate Brave build. Real Origin leaves 7 of them (the usage ping, P3A, local AI, Wayback, Speedreader, Playlist, Web Discovery) changeable in `brave://settings`; Brave's policies can only lock, so here they are locked. The Origin build also hides the sidebar by default, which has no policy.
+- `Max` wipes data every time Brave closes. It only does that when Brave exits normally; session-only cookies cover a crash. Do not use it on a PC where you want to stay logged in.
+- `Strict` blocks permission prompts and plain-HTTP sites by default. Give a site an exception in its site settings or Shields when it needs one.
+- Turning off component updates (the policy, or the Component Updates hosts group) freezes Shields filter lists and can break Widevine playback such as Netflix or Spotify.
 - Disabling built-in Brave scriptlets can break adblocking, anti-annoyance fixes, cookie banners, video playback, or site compatibility. Use the scriptlet manager only when you know which rule you are changing.
 - Brave can replace component filter-list versions during updates. Export disabled scriptlet preferences if you want to reapply the same raw-rule disables after an update.
 - Some Brave-side UI bugs can leave elements visible even when the policy is correctly applied. In that case, trust `brave://policy` first.
@@ -555,26 +574,27 @@ Brave-Free-Origin/
 ├── Brave-Free-Origin.bat     # UAC-elevating launcher  ← double-click THIS
 ├── Brave-Free-Origin.ps1     # Entry point: elevates, loads src/ in order, shows the window
 ├── README.md                 # this file
-├── README.zh-CN.md           # Simplified Chinese readme
 ├── TRANSLATING.md            # how to add a language
 ├── LICENSE
 ├── src/                      # the app's code (.ps1 and .xaml, ASCII only)
-│   ├── core/                 #   logic: registry, hosts, presets, preview, apply, scriptlets
+│   ├── core/                 #   logic: registry, hosts, flags, presets, preview, apply, drift, scriptlets
 │   ├── strings/en-US.ps1     #   English string catalog, the runtime source of truth
 │   └── ui/                   #   the WPF window: theme, view model, background jobs, pages; xaml/ holds the layout
 ├── tweaks/                   # what the app can change, as plain data (see tweaks/README.md)
 │   ├── policies/             #   one .psd1 per policy page
+│   ├── flags.psd1            #   brave://flags entries on the Flags page
+│   ├── retired.psd1          #   policies earlier versions wrote, which Apply removes
 │   ├── system.psd1           #   Brave update tasks and services
 │   ├── hosts.psd1            #   hosts blocklist groups
 │   ├── search.psd1           #   search engines, new tab targets, startup modes
 │   └── presets.psd1          #   what each one-click mode ticks
 ├── locales/                  # UI translations, read as UTF-8 at runtime
-│   ├── en-US.json            #   generated reference, never loaded
-│   └── zh-CN.json            #   Simplified Chinese
+│   └── en-US.json            #   generated reference, never loaded
 ├── tools/                    # maintainer scripts, not shipped to users
 │   ├── Export-EnglishLocale.ps1
 │   ├── Test-Locales.ps1
-│   └── Test-Tweaks.ps1
+│   ├── Test-Tweaks.ps1
+│   └── known-policies.psd1   #   policy names verified against the Chromium and brave-core sources
 └── images/
     ├── screenshot.png        # GUI preview
     ├── Brave-before.png      # Memory comparison: before
@@ -589,6 +609,7 @@ Backups land here:
 %USERPROFILE%\Documents\Brave-Free-Origin-Backups\
 ├── brave-policies-backup-YYYYMMDD-HHMMSS.reg   # registry snapshot before each apply
 ├── hosts-backup-YYYYMMDD-HHMMSS.bak            # hosts snapshot before each hosts apply
+├── local-state-<channel>-YYYYMMDD-HHMMSS.json  # Local State snapshot before flags are written
 └── brave-free-origin-config-YYYYMMDD-HHMMSS.json   # exported configs
 ```
 
@@ -599,6 +620,14 @@ UI preferences (the chosen language and theme) live separately, per user:
 ```
 
 Deleting it just resets the app to following your Windows display language and theme.
+
+The record of the last apply, which the Home page warning compares against, is machine-wide:
+
+```text
+%ProgramData%\Brave-Free-Origin\applied.json
+```
+
+Deleting it only turns the warning off until the next Apply.
 
 Advanced scriptlet backups are stored beside the Brave component list they protect:
 
@@ -614,33 +643,28 @@ and attached to releases — it is not a tracked file in this repository.
 
 ### Exported config format
 
-`Export config` writes schema **2**:
+`Export config` writes schema **3**:
 
 ```jsonc
 {
-  "schemaVersion": 2,          // the file format
-  "appVersion": "2.0",         // the app that wrote it - moves independently
-  "exported": "2026-09-10T14:03:11",
-  "channel": ["Stable"],
-  "profile": "Recommended",    // stable preset id, never the translated label
+  "schemaVersion": 3,          // the file format
+  "appVersion": "2.1",         // the app that wrote it - moves independently
+  "exported": "2026-09-25T14:03:11",
+  "profile": "Recommended",    // stable mode id, never the translated label
   "policies":     { "BraveVPNDisabled": true },
   "policyValues": { "HardwareAccelerationModeEnabled": 1 },
+  "flags":        { "brave-round-time-stamps": false },
   "tasks":        { "BraveSoftwareUpdateTaskMachineCore": true },
   "services":     { "brave": false },
   "hosts":        { "p3a": true },                    // stable group id
   "search":  { "enabled": false, "engineId": "brave",      "customUrl": "" },
   "ntp":     { "enabled": false, "destinationId": "blank", "customUrl": "" },
+  "home":    { "enabled": false, "destinationId": "blank", "customUrl": "" },
   "startup": { "enabled": false, "modeId": "newTab",       "urls": "" }
 }
 ```
 
-`schemaVersion` only changes when the *format* changes, so a normal app release
-does not invalidate your saved configs. Files written by v1.5-v1.11 used
-English display text where schema 2 uses ids (`"Brave P3A telemetry"` instead
-of `"p3a"`, `"Open the new tab page"` instead of `"newTab"`, and so on); those
-names are mapped on import, so old configs keep working. Because nothing in
-the file depends on display text, a config exported with the UI in Chinese
-imports identically with the UI in English and the other way round.
+`schemaVersion` only changes when the *format* changes, so a normal app release does not invalidate your saved configs. Schema 3 added `flags` and `home` and dropped `channel`. Older files still import: v1.5 to v1.11 used English display text where later schemas use ids (`"Brave P3A telemetry"` instead of `"p3a"`, `"Open the new tab page"` instead of `"newTab"`, and so on), old mode ids map onto today's modes (never onto Max), and a policy saved under an old name, such as `MediaRouterEnabled`, lands on the setting that replaced it. Because nothing in the file depends on display text, a config imports identically whatever language the UI is in.
 
 ## Platform Compatibility
 
@@ -660,7 +684,5 @@ It's independently written and maintained, not a fork of this project, and not o
 - [Brave Help Center - What is Brave Origin?](https://support.brave.app/hc/en-us/articles/38561489788173-What-is-Brave-Origin)
 - [brave-core policy definitions](https://github.com/brave/brave-core/tree/master/components/policy/resources/templates/policy_definitions/BraveSoftware)
 - [Chrome Enterprise Policy List](https://chromeenterprise.google/policies/)
+- [brave-core browser/about_flags.cc](https://github.com/brave/brave-core/blob/master/browser/about_flags.cc) (brave://flags) and [Brave Origin's policy list](https://github.com/brave/brave-core/blob/master/browser/brave_origin/brave_origin_service_factory.cc)
 - Original [MulesGaming/brave-debullshitinator](https://github.com/MulesGaming/brave-debullshitinator)
-
-
-[简体中文](README.zh-CN.md)

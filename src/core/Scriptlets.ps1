@@ -3,12 +3,10 @@
 #  Dot-sourced by Brave-Free-Origin.ps1; see the load order there.
 # ============================================================================
 
-$script:ScriptletUserDataRoots = [ordered]@{
-    'Stable'  = "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\User Data"
-    'Beta'    = "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser-Beta\User Data"
-    'Nightly' = "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser-Nightly\User Data"
-    'Dev'     = "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser-Dev\User Data"
-}
+# Each channel's User Data folder, in the original user's LOCALAPPDATA (see
+# core\Channels.ps1), the folder that holds its Local State.
+$script:ScriptletUserDataRoots = [ordered]@{}
+foreach ($name in $script:Channels.Keys) { $script:ScriptletUserDataRoots[$name] = Split-Path -Parent $script:Channels[$name].LocalState }
 $script:ScriptletDisablePrefix = '! BFO disabled: '
 $script:ScriptletRules = @()
 $script:ScriptletVisibleRules = @()
@@ -20,10 +18,11 @@ $script:ScriptletComponentNames = @{
     'flnkmpokemfpaajmiimmjeiandgoodgg' = 'AdGuard French'
 }
 
+# The User Data folder of the first installed channel, Stable first.
 function Get-ScriptletDefaultRoot {
-    $channel = if ($script:TargetChannels -and $script:TargetChannels.Count -gt 0) { $script:TargetChannels[0] } else { 'Stable' }
-    if ($script:ScriptletUserDataRoots.Contains($channel)) { return $script:ScriptletUserDataRoots[$channel] }
-    return $script:ScriptletUserDataRoots['Stable']
+    $channels = @(Get-DetectedChannels)
+    $channel = if ($channels.Count -gt 0) { $channels[0] } else { 'Stable' }
+    return $script:ScriptletUserDataRoots[$channel]
 }
 
 function Get-ScriptletComponentInfo {

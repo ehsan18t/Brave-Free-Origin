@@ -76,14 +76,17 @@ function Assert-TweakTags {
     }
 }
 
-# A task or service entry: a hashtable with Name and tags. A bare name string
-# is accepted too, so the check below can say what is missing.
+# A task or service entry: a hashtable with Name, optional Match patterns and
+# tags. A bare name string is accepted too, so the check below can say what is
+# missing. Without Match, the row acts on the Windows name equal to Name.
 function ConvertTo-SystemEntry {
     param($Entry, [string]$Kind)
     $item = if ($Entry -is [hashtable]) { $Entry } else { @{ Name = "$Entry" } }
     Assert-TweakField -Condition ([bool]$item.Name) -RelativePath 'system.psd1' -Message "Every $Kind needs a Name."
     Assert-TweakTags -Entry $item -What "$Kind $($item.Name)" -RelativePath 'system.psd1'
-    return @{ Name = $item.Name; Effect = $item.Effect; Impacts = @($item.Impacts | Where-Object { $_ }) }
+    $match = @($item.Match | Where-Object { $_ })
+    if ($match.Count -eq 0) { $match = @($item.Name) }
+    return @{ Name = $item.Name; Match = $match; Effect = $item.Effect; Impacts = @($item.Impacts | Where-Object { $_ }) }
 }
 
 # Loads every tweak file into the script-scope tables. Wrapped in a function so
@@ -99,11 +102,13 @@ function Import-Tweaks {
     # ---- Policies ----------------------------------------------------------------
     # One file per tab in tweaks\policies; the numeric file name prefix sets the tab
     # order. Each policy: Name (registry value name, never translated), Type
-    # (DWORD/STRING), ApplyValue (what to write when ticked), Recommended,
-    # MaxPrivacy and optional Choices. Human-readable text lives in the string
-    # catalog under 'policy.<Name>.description' so it can be localized without ever
+    # (DWORD, STRING or LIST), ApplyValue (what to write when ticked; a list of
+    # strings for LIST), BraveDefault, MinChromium, MaxChromium and optional
+    # Choices and LegacyNames. Human-readable text lives in the string catalog
+    # under 'policy.<Name>.description' so it can be localized without ever
     # touching the technical identifiers.
     $script:Policies = [ordered]@{}
+    $script:LegacyPolicyNames = @{}
     foreach ($file in @(Get-ChildItem -LiteralPath (Join-Path $script:TweaksDir 'policies') -Filter '*.psd1' -File | Sort-Object Name)) {
         $relative = "policies\$($file.Name)"
         $data = Import-TweakFile $relative
@@ -112,21 +117,56 @@ function Import-Tweaks {
         $list = @()
         foreach ($entry in $data.Policies) {
             Assert-TweakField -Condition ($entry -is [hashtable] -and $entry.Name) -RelativePath $relative -Message 'Every policy needs a Name.'
-            Assert-TweakField -Condition (@('DWORD', 'STRING') -contains $entry.Type) -RelativePath $relative -Message "$($entry.Name): Type must be 'DWORD' or 'STRING'."
+            Assert-TweakField -Condition (@('DWORD', 'STRING', 'LIST') -contains $entry.Type) -RelativePath $relative -Message "$($entry.Name): Type must be 'DWORD', 'STRING' or 'LIST'."
             Assert-TweakField -Condition ($entry.ContainsKey('ApplyValue')) -RelativePath $relative -Message "$($entry.Name): ApplyValue is missing."
+            Assert-TweakField -Condition ($entry.MinChromium -is [int]) -RelativePath $relative -Message "$($entry.Name): MinChromium must be a number."
+            Assert-TweakField -Condition ($entry.Type -ne 'LIST' -or -not $entry.Choices) -RelativePath $relative -Message "$($entry.Name): a LIST policy cannot have Choices."
             Assert-TweakTags -Entry $entry -What $entry.Name -RelativePath $relative
             $policy = @{}
             foreach ($key in $entry.Keys) { $policy[$key] = $entry[$key] }
+            if ($entry.Type -eq 'LIST') { $policy['ApplyValue'] = [string[]]@($entry.ApplyValue) }
             if ($entry.Choices) {
                 $choices = [ordered]@{}
                 foreach ($choice in $entry.Choices) { $choices[$choice.Id] = $choice.Value }
                 $policy['Choices'] = $choices
             }
             $policy['Impacts'] = @($entry.Impacts | Where-Object { $_ })
+            foreach ($legacy in @($entry.LegacyNames | Where-Object { $_ })) { $script:LegacyPolicyNames[$legacy] = $entry.Name }
             $list += $policy
         }
         $script:Policies[$data.Category] = $list
     }
+    $script:PolicyByName = @{}
+    foreach ($cat in $script:Policies.Keys) { foreach ($p in $script:Policies[$cat]) { $script:PolicyByName[$p.Name] = $p } }
+
+    # ---- Retired policies ----------------------------------------------------------
+    # Names earlier versions wrote. Apply removes them; the drift check offers to.
+    $retiredData = Import-TweakFile 'retired.psd1'
+    $script:RetiredPolicies = [ordered]@{}
+    foreach ($entry in $retiredData.Policies) {
+        Assert-TweakField -Condition ([bool]$entry.Name -and [bool]$entry.Reason) -RelativePath 'retired.psd1' -Message 'Every retired policy needs a Name and a Reason.'
+        Assert-TweakField -Condition (-not $script:PolicyByName.ContainsKey($entry.Name)) -RelativePath 'retired.psd1' -Message "$($entry.Name) is retired but still listed in tweaks\policies."
+        $script:RetiredPolicies[$entry.Name] = @{ Name = $entry.Name; Reason = $entry.Reason; Replacement = $entry.Replacement }
+    }
+
+    # ---- Flags -----------------------------------------------------------------------
+    # brave://flags entries; descriptions under flag.<Name>.description.
+    $flagData = Import-TweakFile 'flags.psd1'
+    $script:Flags = @(foreach ($entry in $flagData.Flags) {
+        Assert-TweakField -Condition ([bool]$entry.Name) -RelativePath 'flags.psd1' -Message 'Every flag needs a Name.'
+        Assert-TweakField -Condition (@('enabled', 'disabled') -contains $entry.State) -RelativePath 'flags.psd1' -Message "$($entry.Name): State must be 'enabled' or 'disabled'."
+        Assert-TweakField -Condition ($entry.MinBrave -is [int]) -RelativePath 'flags.psd1' -Message "$($entry.Name): MinBrave must be a number."
+        Assert-TweakTags -Entry $entry -What "flag $($entry.Name)" -RelativePath 'flags.psd1'
+        @{
+            Name     = $entry.Name
+            State    = $entry.State
+            # Local State stores a flag as name@option: option 1 is Enabled, 2 is Disabled.
+            Entry    = "$($entry.Name)@$(if ($entry.State -eq 'enabled') { 1 } else { 2 })"
+            MinBrave = $entry.MinBrave
+            Effect   = $entry.Effect
+            Impacts  = @($entry.Impacts | Where-Object { $_ })
+        }
+    })
 
     # ---- System: scheduled tasks and services -----------------------------------
     # Task / service descriptions live under task.<Name>.description and
@@ -144,6 +184,7 @@ function Import-Tweaks {
             NameKey        = "hosts.$($group.Id).name"
             DescriptionKey = "hosts.$($group.Id).description"
             Recommended    = $group.Recommended
+            ManualOnly     = [bool]$group.ManualOnly
             Domains        = $group.Domains
             Effect         = $group.Effect
             Impacts        = @($group.Impacts | Where-Object { $_ })
@@ -175,7 +216,14 @@ function Import-Tweaks {
     $script:LegacyStartupModeIds  = Get-LegacyIdMap $searchData.StartupModes
 
     # ---- Presets -----------------------------------------------------------------
-    $script:PresetDefinitions = Import-TweakFile 'presets.psd1'
+    $presetData = Import-TweakFile 'presets.psd1'
+    Assert-TweakField -Condition (@($presetData.Order).Count -gt 0) -RelativePath 'presets.psd1' -Message 'Order is empty.'
+    $script:PresetOrder = @($presetData.Order)
+    $script:PresetDefinitions = $presetData.Modes
+    $script:LegacyPresetIds = if ($presetData.LegacyIds) { $presetData.LegacyIds } else { @{} }
+    foreach ($id in $script:PresetOrder) {
+        Assert-TweakField -Condition ($script:PresetDefinitions.ContainsKey($id)) -RelativePath 'presets.psd1' -Message "Mode '$id' is in Order but has no entry under Modes."
+    }
 }
 
 # A hand-edited .psd1 with a typo must stop the app with a readable message,

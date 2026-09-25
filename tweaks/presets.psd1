@@ -1,128 +1,99 @@
-# One-click modes (the colored buttons above the tabs).
+# One-click modes (the cards on the Home page), in the order shown.
 #
-# A mode's policy list is built from three optional parts, in this order:
-#   Include   other modes whose policy lists are merged in first
-#   Flag      every policy whose entry has this flag set to $true
-#             (Recommended or MaxPrivacy in tweaks\policies\*.psd1)
-#   Policies  policy names added on top
-# Duplicates are dropped. Tasks and Services tick every entry in
-# tweaks\system.psd1 when $true. Hosts lists hosts group ids from
-# tweaks\hosts.psd1; a group is only ticked when the mode also disables the
-# matching feature by policy, so no block is left orphaned.
+# Each mode builds on the one before it through Include, so a mode is
+# everything the included mode ticks plus its own lists:
+#   Include   the mode whose lists are merged in first
+#   Policies  policy names to tick, at their ApplyValue
+#   Values    optional name = value for choice policies that should use
+#             another of their Choices in this mode
+#   Flags     brave://flags names from tweaks\flags.psd1 to tick
+#   Hosts     hosts group ids to tick; only groups without ManualOnly
+#   Startup   optional startup mode id from tweaks\search.psd1 that the mode
+#             sets on the Search & Startup page
+#   Reset     $true for the mode that unticks everything (Default)
 #
-# Mode ids are stable and never translated. Names, descriptions and risk labels
-# are the strings preset.<Id>.name, preset.<Id>.description and preset.<Id>.risk.
-# Current State and Custom are not listed: they have no payload of their own.
+# A mode sets every policy, flag and hosts row: listed ones are ticked, the rest
+# unticked. It never touches the System page, the ManualOnly hosts groups or
+# the search engine and new tab picks; only Default resets those.
+#
+# Mode ids are stable and never translated; configs store them. Names,
+# descriptions and risk labels are the strings preset.<Id>.name, .description
+# and .risk. LegacyIds maps the ids of earlier versions onto these, for
+# importing old configs. Nothing ever maps onto Max, because Max wipes data.
 @{
-    Minimal = @{
-        Policies = @(
-            'HardwareAccelerationModeEnabled',
-            'BraveRewardsDisabled', 'BraveWalletDisabled', 'BraveVPNDisabled',
-            'BraveAIChatEnabled', 'PasswordManagerEnabled'
-        )
-        Tasks    = $false
-        Services = $false
-        # Quick Debloat disables Rewards but leaves News on.
-        Hosts    = @('p3a', 'variations', 'stats', 'webDiscovery', 'rewards')
+    Order = @('Default', 'Origin', 'Recommended', 'Strict', 'Max')
+
+    LegacyIds = @{
+        None           = 'Default'
+        Minimal        = 'Origin'
+        Performance    = 'Recommended'
+        MaxPerformance = 'Strict'
+        MaxPrivacy     = 'Strict'
     }
 
-    Recommended = @{
-        Flag     = 'Recommended'
-        Tasks    = $true
-        Services = $false
-        Hosts    = @('p3a', 'variations', 'stats', 'webDiscovery', 'rewards', 'news')
-    }
+    Modes = @{
+        # Brave as it comes after a fresh install.
+        Default = @{
+            Reset = $true
+        }
 
-    Origin = @{
-        Policies = @(
-            'HardwareAccelerationModeEnabled',
-            'BraveAIChatEnabled',
-            'BraveNewsDisabled',
-            'BraveP3AEnabled',
-            'BravePlaylistEnabled',
-            'BraveRewardsDisabled',
-            'BraveSpeedreaderEnabled',
-            'BraveStatsPingEnabled',
-            'BraveTalkDisabled',
-            'BraveVPNDisabled',
-            'BraveWalletDisabled',
-            'BraveWaybackMachineEnabled',
-            'BraveWebDiscoveryEnabled',
-            'MetricsReportingEnabled',
-            'TorDisabled',
-            # Shields / privacy-engine policies. Keeping ad-block ON is a
-            # performance win (fewer requests, less DOM, less JS), and it is
-            # Brave's identity. Origin Mode and everything that derives from it
-            # (Privacy + Boost) enforces these.
-            'DefaultBraveAdblockSetting',
-            'DefaultBraveFingerprintingV2Setting',
-            'DefaultBraveReferrersSetting',
-            'BraveTrackingQueryParametersFilteringEnabled',
-            'BraveDeAmpEnabled',
-            'BraveDebouncingEnabled'
-        )
-        Tasks    = $false
-        Services = $false
-        # Origin disables both Rewards and News.
-        Hosts    = @('p3a', 'variations', 'stats', 'webDiscovery', 'rewards', 'news')
-    }
+        # A copy of the paid Brave Origin: the 16 features it turns off
+        # (brave-core browser/brave_origin/brave_origin_service_factory.cc).
+        # Real Origin leaves 7 of them changeable in brave://settings; Brave's
+        # policies can only lock, so here all 16 are locked.
+        Origin = @{
+            Policies = @(
+                'TorDisabled', 'BraveRewardsDisabled', 'BraveWalletDisabled', 'BraveAIChatEnabled',
+                'BraveNewsDisabled', 'BraveVPNDisabled', 'BraveTalkDisabled', 'EmailAliasesEnabled', 'PsstEnabled',
+                'BraveStatsPingEnabled', 'BraveP3AEnabled', 'BraveLocalAIEnabled', 'BraveWaybackMachineEnabled',
+                'BraveSpeedreaderEnabled', 'BravePlaylistEnabled', 'BraveWebDiscoveryEnabled'
+            )
+        }
 
-    # Privacy + Boost: Origin Mode plus startup and latency tuning.
-    Performance = @{
-        Include  = @('Origin')
-        Policies = @(
-            'BackgroundModeEnabled',
-            'BrowserLabsEnabled',
-            'CloudPrintSubmitEnabled',
-            'DiskCacheSize',
-            'HardwareAccelerationModeEnabled',
-            'HighEfficiencyModeEnabled',
-            'HomepageIsNewTabPage',
-            'HomepageLocation',
-            'IPFSEnabled',
-            'LiveCaptionEnabled',
-            'MediaRouterEnabled',
-            'NetworkPredictionOptions',
-            'NewTabPageLocation',
-            'NTPCustomBackgroundEnabled',
-            'PromotionalTabsEnabled',
-            'QuicAllowed',
-            'ReadingListEnabled',
-            'RestoreOnStartup',
-            'WebRtcEventLogCollectionAllowed',
-            'WebTorrentDisabled',
-            'WelcomePageOnOSUpgradeEnabled'
-        )
-        Tasks    = $true
-        Services = $false
-        Hosts    = @('p3a', 'variations', 'stats', 'webDiscovery', 'rewards', 'news')
-    }
+        # Origin plus changes that never break a site or cost you data:
+        # telemetry off, promos off, Brave's own protections locked on.
+        Recommended = @{
+            Include  = 'Origin'
+            Policies = @(
+                'MetricsReportingEnabled', 'UrlKeyedAnonymizedDataCollectionEnabled', 'UserFeedbackAllowed',
+                'WebRtcEventLogCollectionAllowed', 'ChromeVariations',
+                'SafeBrowsingExtendedReportingEnabled', 'SafeBrowsingSurveysEnabled',
+                'AlternateErrorPagesEnabled', 'SpellCheckServiceEnabled', 'NetworkPredictionOptions',
+                'PromotionsEnabled', 'BackgroundModeEnabled',
+                'DefaultBraveAdblockSetting', 'DefaultBraveFingerprintingV2Setting', 'DefaultBraveReferrersSetting',
+                'BraveGlobalPrivacyControlEnabled', 'BraveReduceLanguageEnabled',
+                'BraveTrackingQueryParametersFilteringEnabled', 'BraveDeAmpEnabled', 'BraveDebouncingEnabled'
+            )
+            Hosts    = @('p3a', 'stats', 'webDiscovery', 'rewards', 'news')
+        }
 
-    # Max Performance: Max Privacy and Privacy + Boost combined, plus extra UI trims.
-    MaxPerformance = @{
-        Include  = @('MaxPrivacy', 'Performance')
-        Policies = @(
-            'BookmarkBarEnabled',
-            'PromptForDownloadLocation',
-            'ShowHomeButton',
-            'SpellcheckEnabled'
-        )
-        Tasks    = $true
-        Services = $true
-        Hosts    = @('p3a', 'variations', 'stats', 'webDiscovery', 'rewards', 'news', 'components')
-    }
+        # Recommended plus hardening that keeps your logins and history. Some
+        # sites need a manual exception (HTTP pages, permission prompts).
+        Strict = @{
+            Include  = 'Recommended'
+            Policies = @(
+                'DefaultBraveHttpsUpgradeSetting',
+                'DefaultNotificationsSetting', 'DefaultGeolocationSetting', 'DefaultSensorsSetting',
+                'DefaultWebUsbGuardSetting', 'DefaultWebBluetoothGuardSetting', 'DefaultWebHidGuardSetting',
+                'DefaultSerialGuardSetting', 'DefaultLocalFontsSetting',
+                'WebRtcIPHandling', 'EnableMediaRouter', 'SearchSuggestEnabled', 'PaymentMethodQueryEnabled'
+            )
+            Flags    = @('brave-round-time-stamps', 'brave-show-strict-fingerprinting-mode', 'brave-clean-link-js-api')
+        }
 
-    MaxPrivacy = @{
-        Flag     = 'MaxPrivacy'
-        Tasks    = $true
-        Services = $true
-        Hosts    = @('p3a', 'variations', 'stats', 'webDiscovery', 'rewards', 'news', 'components')
-    }
-
-    # Stock / None: unticks everything.
-    None = @{
-        Tasks    = $false
-        Services = $false
-        Hosts    = @()
+        # Strict plus forgetting: history is never saved, cookies last one
+        # session, and closing Brave wipes the rest. Bookmarks, settings and
+        # extensions survive. Startup opens a new tab, because restoring a
+        # session would also restore its cookies.
+        Max = @{
+            Include  = 'Strict'
+            Policies = @(
+                'SavingBrowserHistoryDisabled', 'DefaultCookiesSetting', 'DefaultBraveRemember1PStorageSetting',
+                'ClearBrowsingDataOnExitList',
+                'PasswordManagerEnabled', 'AutofillAddressEnabled', 'AutofillCreditCardEnabled',
+                'SyncDisabled', 'BrowserSignin'
+            )
+            Startup  = 'newTab'
+        }
     }
 }

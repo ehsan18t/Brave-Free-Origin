@@ -23,6 +23,7 @@ $script:UnseenAlerts = 0
 
 $script:WorkerBootstrap = @'
 $script:AppRoot = $BfoAppRoot
+$script:AppVersion = $BfoAppVersion
 $script:StartupError = $null
 foreach ($bfoFile in $BfoFiles) { . (Join-Path $BfoAppRoot "src\$bfoFile") }
 $script:LogSink = $BfoLogSink
@@ -35,6 +36,9 @@ function Start-BfoWorker {
     $runspace.Open()
     $proxy = $runspace.SessionStateProxy
     $proxy.SetVariable('BfoAppRoot', $script:AppRoot)
+    $proxy.SetVariable('BfoAppVersion', $script:AppVersion)
+    # core\Channels.ps1 reads it to find Brave's user data.
+    $proxy.SetVariable('BfoLocalAppData', $script:UserLocalAppData)
     $proxy.SetVariable('BfoFiles', [string[]]@($script:SourceFiles | Where-Object { $_ -like 'core\*' -or $_ -like 'strings\*' }))
     $proxy.SetVariable('BfoLogSink', $script:LogSink)
     $proxy.SetVariable('BfoProgress', $script:JobProgress)

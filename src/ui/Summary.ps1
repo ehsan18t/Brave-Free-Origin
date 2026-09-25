@@ -33,7 +33,7 @@ function Format-PolicyValue {
             if ("$($values[$i])" -eq "$Value") { return [string]$Row.Choices[$i].Label }
         }
     }
-    return "$Value"
+    return (Format-PolicyValueText $Value)
 }
 
 # Plan is Get-ApplyPlan's result, Selection the snapshot it was built from.
@@ -46,7 +46,6 @@ function Get-PlanSummary {
     $impacts = [ordered]@{}
     $changes = 0
     $keeps = 0
-    $multi = @($Plan.Channels).Count -gt 1
 
     # Files one enforced change under its Effect and notes its Impacts.
     $enforce = {
@@ -61,44 +60,60 @@ function Get-PlanSummary {
         }
     }
 
-    foreach ($channel in $Plan.Channels) {
-        $prefix = if ($multi) { "[$($channel.Channel)] " } else { '' }
-        foreach ($p in $channel.Policies) {
-            $row = $script:RowIndex["Policy:$($p.Name)"]
-            $title = if ($row) { $row.Title } else { $p.Name }
-            switch ($p.Verb) {
-                'KEEP' { $keeps++ }
-                'ADD' {
-                    $changes++
-                    & $enforce $row.Effect $row.ImpactIds $title "$prefix$($p.Name) = $(Format-PolicyValue $row $p.Target)"
-                }
-                'CHANGE' {
-                    $changes++
-                    & $enforce $row.Effect $row.ImpactIds $title ($prefix + (T 'preview.changed' @($p.Name, (Format-PolicyValue $row $p.Current), (Format-PolicyValue $row $p.Target))))
-                }
-                'CLEAR' {
-                    $changes++
-                    $backToDefault.Add((New-SummaryEntry -Kind Item -Text $title -Detail ($prefix + (T 'preview.cleared' @($p.Name, (Format-PolicyValue $row $p.Current))))))
-                }
+    foreach ($p in $Plan.Policies) {
+        $row = $script:RowIndex["Policy:$($p.Name)"]
+        $title = if ($row) { $row.Title } else { $p.Name }
+        switch ($p.Verb) {
+            'KEEP' { $keeps++ }
+            'ADD' {
+                $changes++
+                & $enforce $row.Effect $row.ImpactIds $title "$($p.Name) = $(Format-PolicyValue $row $p.Target)"
+            }
+            'CHANGE' {
+                $changes++
+                & $enforce $row.Effect $row.ImpactIds $title (T 'preview.changed' @($p.Name, (Format-PolicyValue $row $p.Current), (Format-PolicyValue $row $p.Target)))
+            }
+            'CLEAR' {
+                $changes++
+                $backToDefault.Add((New-SummaryEntry -Kind Item -Text $title -Detail (T 'preview.cleared' @($p.Name, (Format-PolicyValue $row $p.Current)))))
             }
         }
+    }
+    foreach ($r in $Plan.Retired) {
+        $changes++
+        $backToDefault.Add((New-SummaryEntry -Kind Item -Text (T 'preview.retired' @($r.Name)) -Detail (T "retired.reason.$($r.Reason)")))
+    }
+    foreach ($key in $Plan.LegacyKeys) {
+        $changes++
+        $backToDefault.Add((New-SummaryEntry -Kind Item -Text (T 'preview.legacyKey') -Detail $key))
+    }
 
-        foreach ($spec in @(
-            @{ Plan = $channel.Search;  Section = 'searchTab.secSearch';  Set = 'preview.searchSet';  Cleared = 'preview.searchCleared';  Label = { Get-SearchLabel $args[0] $Selection.Overrides } }
-            @{ Plan = $channel.Ntp;     Section = 'searchTab.secNtp';     Set = 'preview.ntpSet';     Cleared = 'preview.ntpCleared';     Label = { Get-NtpLabel $args[0] $Selection.Overrides } }
-            @{ Plan = $channel.Startup; Section = 'searchTab.secStartup'; Set = 'preview.startupSet'; Cleared = 'preview.startupCleared'; Label = { Get-StartupLabel $args[0] $Selection.Overrides } }
-        )) {
-            $part = $spec.Plan
-            if ($part.Error) {
-                $overrides.Add((New-SummaryEntry -Kind Item -Text (T 'preview.overrideSkipped' @((T $spec.Section))) -Detail "$prefix$($part.Error)"))
-                continue
-            }
-            if ($part.Changes -eq 0) { continue }
-            $changes++
-            $enabled = if ($part.Desired -is [System.Collections.IDictionary]) { $part.Desired.Count -gt 0 } else { [bool]$part.Desired.Enabled }
-            $text = if ($enabled) { T $spec.Set @((& $spec.Label $part.Desired)) } else { T $spec.Cleared }
-            $overrides.Add((New-SummaryEntry -Kind Item -Text $text -Detail ($prefix.Trim())))
+    foreach ($f in $Plan.Flags) {
+        $row = $script:RowIndex["Flag:$($f.Name)"]
+        $title = if ($row) { $row.Title } else { $f.Name }
+        switch ($f.Verb) {
+            'KEEP'  { $keeps++ }
+            'CLEAR' { $changes++; $backToDefault.Add((New-SummaryEntry -Kind Item -Text $title -Detail (T 'preview.flagCleared' @($f.Name)))) }
+            default { $changes++; & $enforce $row.Effect $row.ImpactIds $title (T 'preview.flagSet' @($f.Name)) }
         }
+    }
+
+    foreach ($spec in @(
+        @{ Plan = $Plan.Search;  Section = 'searchTab.secSearch';  Set = 'preview.searchSet';  Cleared = 'preview.searchCleared';  Label = { Get-SearchLabel $args[0] $Selection.Overrides } }
+        @{ Plan = $Plan.Ntp;     Section = 'searchTab.secNtp';     Set = 'preview.ntpSet';     Cleared = 'preview.ntpCleared';     Label = { Get-NtpLabel $args[0] $Selection.Overrides } }
+        @{ Plan = $Plan.Home;    Section = 'searchTab.secHome';    Set = 'preview.homeSet';    Cleared = 'preview.homeCleared';    Label = { Get-HomeLabel $args[0] $Selection.Overrides } }
+        @{ Plan = $Plan.Startup; Section = 'searchTab.secStartup'; Set = 'preview.startupSet'; Cleared = 'preview.startupCleared'; Label = { Get-StartupLabel $args[0] $Selection.Overrides } }
+    )) {
+        $part = $spec.Plan
+        if ($part.Error) {
+            $overrides.Add((New-SummaryEntry -Kind Item -Text (T 'preview.overrideSkipped' @((T $spec.Section))) -Detail "$($part.Error)"))
+            continue
+        }
+        if ($part.Changes -eq 0) { continue }
+        $changes++
+        $enabled = if ($part.Desired -is [System.Collections.IDictionary]) { $part.Desired.Count -gt 0 } else { [bool]$part.Desired.Enabled }
+        $text = if ($enabled) { T $spec.Set @((& $spec.Label $part.Desired)) } else { T $spec.Cleared }
+        $overrides.Add((New-SummaryEntry -Kind Item -Text $text))
     }
 
     foreach ($kind in @('Task', 'Service')) {
@@ -121,14 +136,16 @@ function Get-PlanSummary {
 
     # ---- Assemble ---------------------------------------------------------------
     $entries = New-BfoList
-    $channelText = $Selection.Channels -join ', '
     if ($changes -eq 0) {
-        $entries.Add((New-SummaryEntry -Kind Lead -Text (T 'preview.leadNone' @($channelText))))
+        $entries.Add((New-SummaryEntry -Kind Lead -Text (T 'preview.leadNone')))
     } else {
         # A named mode reads as "Applying Recommended"; a hand-picked mix as
         # "Applying your selection".
         $mode = if (@('Custom', 'CurrentState') -contains $Selection.Profile) { T 'preview.yourSelection' } else { Get-PresetName $Selection.Profile }
-        $entries.Add((New-SummaryEntry -Kind Lead -Text (T 'preview.lead' @($mode, $channelText, $changes, $keeps))))
+        $entries.Add((New-SummaryEntry -Kind Lead -Text (T 'preview.lead' @($mode, $changes, $keeps))))
+    }
+    if (@($Plan.FlagsBlocked).Count -gt 0 -and @($Plan.Flags | Where-Object { $_.Verb -ne 'KEEP' }).Count -gt 0) {
+        $entries.Add((New-SummaryEntry -Kind Note -Text (T 'preview.flagsBlocked' @((@($Plan.FlagsBlocked) -join ', '))) -Tone caution))
     }
 
     if ($impacts.Count -gt 0) {
@@ -177,6 +194,13 @@ function Get-NtpLabel {
     param($Desired, $Overrides)
     $item = $script:Vm.DestinationItems[(Get-ChoiceIndex $script:Vm.DestinationItems $Overrides.DestinationId)]
     if ($item.Id -eq 'custom' -or $item.Id -eq 'matchSearch') { return [string]$Desired['NewTabPageLocation'].Value }
+    return [string]$item.Label
+}
+
+function Get-HomeLabel {
+    param($Desired, $Overrides)
+    $item = $script:Vm.HomeDestinationItems[(Get-ChoiceIndex $script:Vm.HomeDestinationItems $Overrides.HomeDestinationId)]
+    if ($item.Id -eq 'custom' -or $item.Id -eq 'matchSearch') { return [string]$Desired['HomepageLocation'].Value }
     return [string]$item.Label
 }
 

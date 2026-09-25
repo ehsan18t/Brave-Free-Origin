@@ -1006,11 +1006,13 @@
 
   <!-- ==== Row template: policies, tasks, services, hosts groups ============ -->
   <!-- A Kind=Header row is a section title (the System page, search results). -->
+  <!-- Enabled is false for a row the installed Brave does not support: the
+       card is greyed out and cannot be ticked; its note says why. -->
   <DataTemplate x:Key="RowTemplate">
     <Grid>
       <TextBlock Text="{Binding Title}" Visibility="{Binding HeaderVisibility}" Style="{StaticResource SectionText}" Margin="2,20,0,8"/>
-      <CheckBox Style="{StaticResource SettingCard}" IsChecked="{Binding Checked, Mode=TwoWay}" Visibility="{Binding CardVisibility}"
-                ToolTip="{Binding Tip}" ToolTipService.InitialShowDelay="700">
+      <CheckBox x:Name="Card" Style="{StaticResource SettingCard}" IsChecked="{Binding Checked, Mode=TwoWay}" Visibility="{Binding CardVisibility}"
+                IsEnabled="{Binding Enabled}" ToolTip="{Binding Tip}" ToolTipService.InitialShowDelay="700">
         <Grid>
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
@@ -1045,6 +1047,11 @@
         </Grid>
       </CheckBox>
     </Grid>
+    <DataTemplate.Triggers>
+      <DataTrigger Binding="{Binding Enabled}" Value="False">
+        <Setter TargetName="Card" Property="Opacity" Value="0.55"/>
+      </DataTrigger>
+    </DataTemplate.Triggers>
   </DataTemplate>
 
   <DataTemplate x:Key="NavTemplate">

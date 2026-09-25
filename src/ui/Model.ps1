@@ -74,42 +74,38 @@ function Get-ChoiceIndex {
 $script:ActiveProfile = 'Custom'
 
 $script:Vm = New-BfoObject @{
-    VersionText = ''; BraveText = ''; ChannelChipText = ''; AboutTitle = ''
+    VersionText = ''; BraveText = ''; ChannelChipText = ''; AboutTitle = ''; PolicyKeyText = ''
     Presets = (New-BfoList); PresetColumns = 4
-    ModeName = ''; ModeDescription = ''; RiskLine = ''; PolicyStat = ''; TaskStat = ''; ServiceStat = ''
+    ModeName = ''; ModeDescription = ''; RiskLine = ''; PolicyStat = ''; FlagStat = ''; TaskStat = ''; ServiceStat = ''
     ListTitle = ''; ListSubtitle = ''; ListIntro = ''; ListIntroVisibility = $script:Collapsed
     SelectedOnly = $false; SelectedOnlyVisibility = $script:Collapsed; SelectButtonsVisibility = $script:Collapsed
     ListEmptyVisibility = $script:Collapsed
     HostsPendingText = ''
     SearchEnabled = $false; EngineItems = $null; EngineIndex = 0; CustomSearchUrl = ''; CustomSearchUrlEnabled = $false
     NtpEnabled = $false; DestinationItems = $null; DestinationIndex = 0; NtpCustomUrl = ''; NtpCustomUrlEnabled = $false
+    HomeEnabled = $false; HomeDestinationItems = $null; HomeDestinationIndex = 0; HomeCustomUrl = ''; HomeCustomUrlEnabled = $false
     StartupEnabled = $false; StartupModeItems = $null; StartupModeIndex = 0; StartupUrls = ''; StartupUrlsEnabled = $false
     ScriptletRoot = ''; ScriptletDisabledOnly = $false; ScriptletAdvanced = $false; ScriptletAffectDupes = $true
     ScriptletStatus = ''; ScriptletProgress = 0; ScriptletProgressVisibility = $script:Collapsed; ScanButtonText = ''
     LanguageItems = $null; LanguageIndex = 0; LanguageNote = ''
     ThemeItems = $null; ThemeIndex = 0
-    ChannelItems = $null; ChannelIndex = 0; ChannelPath = ''
     Backup = $true
     BarTitle = ''; BarSubtitle = ''; BusyText = ''
     IsBusy = $false; IsIdle = $true; BusyVisibility = $script:Collapsed
     AlertCount = ''; AlertVisibility = $script:Collapsed
+    DriftVisibility = $script:Collapsed; DriftTitle = ''; DriftText = ''; DriftItems = (New-BfoList)
+    DriftReapplyVisibility = $script:Collapsed; DriftCleanupVisibility = $script:Collapsed
 }
 
-$script:Vm.EngineItems      = New-ChoiceList -Ids $script:SearchEngineIds -LabelKeys $script:SearchEngineLabelKeys
-$script:Vm.DestinationItems = New-ChoiceList -Ids $script:DestinationIds  -LabelKeys $script:DestinationLabelKeys
-$script:Vm.StartupModeItems = New-ChoiceList -Ids $script:StartupModeIds  -LabelKeys $script:StartupModeLabelKeys
-$script:Vm.ThemeItems       = New-ChoiceList -Ids $script:ThemeModes -LabelKeys @('theme.system', 'theme.light', 'theme.dark')
+$script:Vm.EngineItems          = New-ChoiceList -Ids $script:SearchEngineIds -LabelKeys $script:SearchEngineLabelKeys
+$script:Vm.DestinationItems     = New-ChoiceList -Ids $script:DestinationIds  -LabelKeys $script:DestinationLabelKeys
+$script:Vm.HomeDestinationItems = New-ChoiceList -Ids $script:DestinationIds  -LabelKeys $script:DestinationLabelKeys
+$script:Vm.StartupModeItems     = New-ChoiceList -Ids $script:StartupModeIds  -LabelKeys $script:StartupModeLabelKeys
+$script:Vm.ThemeItems           = New-ChoiceList -Ids $script:ThemeModes -LabelKeys @('theme.system', 'theme.light', 'theme.dark')
 
-# Channels: the label shows whether each one is installed. "All installed
-# channels" is offered only when there is more than one.
+# Every channel reads the same policy key, so there is nothing to pick: the
+# Home page only says which channels are installed.
 $script:DetectedChannels = @(Get-DetectedChannels)
-$channelIds = @(); $channelKeys = @()
-foreach ($name in $script:Channels.Keys) {
-    $channelIds += $name
-    $channelKeys += $(if ($script:DetectedChannels -contains $name) { 'channel.installed' } else { 'channel.notInstalled' })
-}
-if ($script:DetectedChannels.Count -gt 1) { $channelIds += '__ALL__'; $channelKeys += 'header.allChannels' }
-$script:Vm.ChannelItems = New-ChoiceList -Ids $channelIds -LabelKeys $channelKeys -FormatWithId
 
 # Languages carry their own display names, so they are never relabelled.
 $script:LocaleList = @(Get-AvailableLocales)
@@ -128,6 +124,7 @@ function New-SettingRow {
     param([hashtable]$Properties)
     $defaults = @{
         Checked = $false; Title = ''; Note = ''; NoteVisibility = $script:Collapsed; Detail = ''; Tip = $null
+        Supported = $true; Enabled = $true
         CardVisibility = $script:Visible; HeaderVisibility = $script:Collapsed
         Choices = $null; ChoiceIndex = -1; ChoiceVisibility = $script:Collapsed; Search = ''
         Effect = $null; ImpactIds = @(); ImpactItems = $null; ImpactVisibility = $script:Collapsed
@@ -150,7 +147,7 @@ function New-HeaderRow {
     , (New-BfoObject @{
         Kind = 'Header'; TitleKey = $TitleKey; Title = $(if ($TitleKey) { [string](T $TitleKey) } else { $Title })
         HeaderVisibility = $script:Visible; CardVisibility = $script:Collapsed; NoteVisibility = $script:Collapsed
-        ChoiceVisibility = $script:Collapsed; ImpactVisibility = $script:Collapsed; Checked = $false
+        ChoiceVisibility = $script:Collapsed; ImpactVisibility = $script:Collapsed; Checked = $false; Enabled = $true
     })
 }
 
@@ -162,15 +159,37 @@ function Add-SettingRow {
     $script:PageRows[$Row.PageId].Add($Row)
 }
 
+# Version gating: a row the installed Brave does not support yet (or any
+# more) is greyed out and never ticked. With no Brave installed, nothing is
+# gated. Policies follow the Chromium version, flags the Brave version.
+$script:InstalledVersion = if ($script:BraveVersionInfo) { $script:BraveVersionInfo } else { ConvertTo-BraveVersionInfo $script:BraveVersion }
+
+function Test-PolicySupported {
+    param($Policy)
+    $chromium = $script:InstalledVersion.Chromium
+    if ($chromium -le 0) { return $true }
+    if ($Policy.MinChromium -and $chromium -lt $Policy.MinChromium) { return $false }
+    if ($Policy.MaxChromium -and $chromium -gt $Policy.MaxChromium) { return $false }
+    return $true
+}
+
+function Test-FlagSupported {
+    param($Flag)
+    $minor = $script:InstalledVersion.BraveMinor
+    return ($minor -le 0 -or $minor -ge $Flag.MinBrave)
+}
+
 foreach ($category in $script:Policies.Keys) {
     $pageId = "cat:$category"
     $script:PageRows[$pageId] = New-BfoList
     foreach ($policy in $script:Policies[$category]) {
+        $supported = Test-PolicySupported $policy
         $properties = @{
             Kind = 'Policy'; Id = $policy.Name; PageId = $pageId; GroupKey = "category.$category"
             Policy = $policy; TitleKey = "policy.$($policy.Name).description"
-            Detail = "$($policy.Name) = $($policy.ApplyValue)"
+            Detail = "$($policy.Name) = $(Format-PolicyValueText $policy.ApplyValue)"
             Effect = $policy.Effect; ImpactIds = @($policy.Impacts)
+            Supported = $supported; Enabled = $supported
         }
         if ($policy.Choices) {
             # The value picker shows translated labels; the id behind each one
@@ -184,6 +203,16 @@ foreach ($category in $script:Policies.Keys) {
         }
         Add-SettingRow (New-SettingRow $properties)
     }
+}
+
+# brave://flags rows. A ticked row writes the flag's State; unticked is Default.
+$script:PageRows['flags'] = New-BfoList
+foreach ($flag in $script:Flags) {
+    $supported = Test-FlagSupported $flag
+    Add-SettingRow (New-SettingRow @{ Kind = 'Flag'; Id = $flag.Name; PageId = 'flags'; GroupKey = 'tab.flags'
+        Flag = $flag; TitleKey = "flag.$($flag.Name).description"
+        Detail = "$($flag.Name) = $(if ($flag.State -eq 'enabled') { 'Enabled' } else { 'Disabled' })"
+        Effect = $flag.Effect; ImpactIds = @($flag.Impacts); Supported = $supported; Enabled = $supported })
 }
 
 $script:PageRows['system'] = New-BfoList
@@ -210,6 +239,36 @@ foreach ($block in $script:HostsBlocks) {
 # Title, note and the search text are the parts of a row that depend on the
 # language; everything else is fixed at build time. Update-ModelText fills them
 # in, at startup and on every language switch.
+# The small line under a policy or flag title: why it is greyed out, or what
+# Brave does when the row is left alone.
+function Get-RowNote {
+    param($Row)
+    $installed = $script:InstalledVersion
+    if ($Row.Kind -eq 'Flag') {
+        if (-not $Row.Supported) { return [string](T 'row.needsBrave' @($Row.Flag.MinBrave, $installed.BraveMinor)) }
+        # A flag the row turns on is off by default, and the other way round.
+        if ($Row.Flag.State -eq 'enabled') { return [string](T 'row.flagDefaultOff') }
+        return [string](T 'row.flagDefaultOn')
+    }
+    $policy = $Row.Policy
+    if (-not $Row.Supported) {
+        if ($policy.MaxChromium -and $installed.Chromium -gt $policy.MaxChromium) { return [string](T 'row.tooNew' @($policy.MaxChromium, $installed.Chromium)) }
+        return [string](T 'row.needsChromium' @($policy.MinChromium, $installed.Chromium))
+    }
+    if (-not $policy.ContainsKey('BraveDefault')) { return '' }
+    $default = $policy.BraveDefault
+    if ($policy.Choices) {
+        $ids = @($policy.Choices.Keys)
+        $values = @($policy.Choices.Values)
+        for ($i = 0; $i -lt $values.Count; $i++) {
+            if ("$($values[$i])" -eq "$default") { return [string](T 'row.braveDefault' @((T "policy.$($policy.Name).choice.$($ids[$i])"))) }
+        }
+        return [string](T 'row.changesDefault')
+    }
+    if (Test-PolicyValueEqual $default $policy.ApplyValue) { return [string](T 'row.lockOnly') }
+    return [string](T 'row.changesDefault')
+}
+
 function Update-RowText {
     param($Row)
     switch ($Row.Kind) {
@@ -218,7 +277,13 @@ function Update-RowText {
             $Row.Title = [string](T 'hostsTab.groupLabel' @((T $Row.Block.NameKey), $Row.Block.Domains.Count))
             $Row.Note  = [string](T $Row.Block.DescriptionKey)
         }
-        default { $Row.Title = [string](T $Row.TitleKey) }
+        default {
+            $Row.Title = [string](T $Row.TitleKey)
+            if ($Row.Kind -eq 'Policy' -or $Row.Kind -eq 'Flag') {
+                $Row.Note = Get-RowNote $Row
+                $Row.NoteVisibility = ConvertTo-Visibility ([bool]$Row.Note)
+            }
+        }
     }
     if ($Row.Choices) { Update-ChoiceLabels $Row.Choices }
     $chipText = ''
@@ -251,9 +316,9 @@ function Set-RowChoiceByValue {
 
 # ---- Navigation --------------------------------------------------------------------
 $script:CategoryGlyphs = @{
-    braveFeatures = 0xEA86; privacyTelemetry = 0xEA18; autofillPasswords = 0xE8D7; searchSuggestions = 0xE721
-    safetyUpdates = 0xE777; aiGenAi = 0xE99A; webServicesBackground = 0xE753; performanceStartup = 0xEC4A
-    uiBloatExtras = 0xE74D
+    braveFeatures = 0xEA86; aiGenAi = 0xE99A; privacyTelemetry = 0xE9D9; shields = 0xEA18; sitePermissions = 0xE8D7
+    historyData = 0xE81C; autofillPasswords = 0xE72E; searchSuggestions = 0xE721; safetyUpdates = 0xE777
+    webServicesBackground = 0xE753; performanceStartup = 0xEC4A; uiBloatExtras = 0xE74D
 }
 
 $script:NavItems = New-BfoList
@@ -276,17 +341,16 @@ Add-NavItem -Id 'system' -LabelKey 'tab.system' -Glyph 0xE770
 Add-NavItem -Id 'hosts' -LabelKey 'tab.hosts' -Glyph 0xE774
 Add-NavItem -Id 'search' -LabelKey 'tab.searchStartup' -Glyph 0xE7E8
 Add-NavItem -Id '' -LabelKey 'nav.advanced' -Header
+Add-NavItem -Id 'flags' -LabelKey 'tab.flags' -Glyph 0xE7C1
 Add-NavItem -Id 'scriptlets' -LabelKey 'tab.scriptlets' -Glyph 0xE943
 Add-NavItem -Id 'settings' -LabelKey 'nav.settings' -Glyph 0xE713
 
 # ---- Presets (home page cards) ------------------------------------------------------
-$script:PresetRisk = @{
-    Minimal = 'low'; Recommended = 'low'; Origin = 'low'; Performance = 'medium'
-    MaxPerformance = 'high'; MaxPrivacy = 'high'; None = 'neutral'
-}
-foreach ($preset in @('Minimal', 'Recommended', 'Origin', 'Performance', 'MaxPerformance', 'MaxPrivacy', 'None')) {
+# The color of each card's risk label; the order is tweaks\presets.psd1's.
+$script:PresetRisk = @{ Default = 'neutral'; Origin = 'low'; Recommended = 'low'; Strict = 'medium'; Max = 'high' }
+foreach ($preset in $script:PresetOrder) {
     $script:Vm.Presets.Add((New-BfoObject @{
-        Id = $preset; Name = ''; Description = ''; Risk = ''; RiskLevel = $script:PresetRisk[$preset]
+        Id = $preset; Name = ''; Description = ''; Risk = ''; RiskLevel = $(if ($script:PresetRisk.ContainsKey($preset)) { $script:PresetRisk[$preset] } else { 'neutral' })
         IsActive = $false; ActiveVisibility = $script:Collapsed
     }))
 }
@@ -299,19 +363,23 @@ function Update-PresetText {
     }
 }
 
+
 # ---- Overrides (Search & Startup page) ----------------------------------------------
 function Get-OverrideSnapshot {
     $vm = $script:Vm
     return [pscustomobject]@{
-        SearchEnabled   = [bool]$vm.SearchEnabled
-        EngineId        = (Get-ChoiceId $vm.EngineItems $vm.EngineIndex)
-        CustomSearchUrl = [string]$vm.CustomSearchUrl
-        NtpEnabled      = [bool]$vm.NtpEnabled
-        DestinationId   = (Get-ChoiceId $vm.DestinationItems $vm.DestinationIndex)
-        NtpCustomUrl    = [string]$vm.NtpCustomUrl
-        StartupEnabled  = [bool]$vm.StartupEnabled
-        StartupModeId   = (Get-ChoiceId $vm.StartupModeItems $vm.StartupModeIndex)
-        StartupUrls     = [string]$vm.StartupUrls
+        SearchEnabled     = [bool]$vm.SearchEnabled
+        EngineId          = (Get-ChoiceId $vm.EngineItems $vm.EngineIndex)
+        CustomSearchUrl   = [string]$vm.CustomSearchUrl
+        NtpEnabled        = [bool]$vm.NtpEnabled
+        DestinationId     = (Get-ChoiceId $vm.DestinationItems $vm.DestinationIndex)
+        NtpCustomUrl      = [string]$vm.NtpCustomUrl
+        HomeEnabled       = [bool]$vm.HomeEnabled
+        HomeDestinationId = (Get-ChoiceId $vm.HomeDestinationItems $vm.HomeDestinationIndex)
+        HomeCustomUrl     = [string]$vm.HomeCustomUrl
+        StartupEnabled    = [bool]$vm.StartupEnabled
+        StartupModeId     = (Get-ChoiceId $vm.StartupModeItems $vm.StartupModeIndex)
+        StartupUrls       = [string]$vm.StartupUrls
     }
 }
 
@@ -322,31 +390,34 @@ function Update-OverrideStates {
     $engine = $script:SearchEngines[$o.EngineId]
     $script:Vm.CustomSearchUrlEnabled = [bool]($engine -and $engine.IsCustom)
     $script:Vm.NtpCustomUrlEnabled = ($o.DestinationId -eq 'custom')
+    $script:Vm.HomeCustomUrlEnabled = ($o.HomeDestinationId -eq 'custom')
     $mode = $script:StartupModes[$o.StartupModeId]
     $script:Vm.StartupUrlsEnabled = [bool]($mode -and $mode.UsesURL -and -not $mode.FixedURL)
 }
 
 # ---- Selection snapshot (see core\State.ps1) ------------------------------------------
+# A row the installed Brave does not support is never sent as ticked.
 function Get-SelectionSnapshot {
-    $policies = New-BfoList; $tasks = New-BfoList; $services = New-BfoList; $hosts = New-BfoList
+    $policies = New-BfoList; $flags = New-BfoList; $tasks = New-BfoList; $services = New-BfoList; $hosts = New-BfoList
     foreach ($row in $script:Rows) {
         switch ($row.Kind) {
             'Policy' {
                 $policies.Add([pscustomobject]@{
                     Name = $row.Id; Type = $row.Policy.Type; Value = (Get-RowValue $row)
-                    Checked = [bool]$row.Checked; HasChoices = [bool]$row.Policy.Choices
+                    Checked = [bool]($row.Checked -and $row.Supported); HasChoices = [bool]$row.Policy.Choices
                 })
             }
+            'Flag'    { $flags.Add([pscustomobject]@{ Name = $row.Id; Entry = $row.Flag.Entry; Checked = [bool]($row.Checked -and $row.Supported) }) }
             'Task'    { $tasks.Add([pscustomobject]@{ Name = $row.Id; Checked = [bool]$row.Checked }) }
             'Service' { $services.Add([pscustomobject]@{ Name = $row.Id; Checked = [bool]$row.Checked }) }
             'Hosts'   { $hosts.Add([pscustomobject]@{ Id = $row.Id; Checked = [bool]$row.Checked; Domains = @($row.Block.Domains) }) }
         }
     }
     return [pscustomobject]@{
-        Channels  = @($script:TargetChannels)
         Profile   = $script:ActiveProfile
         Backup    = [bool]$script:Vm.Backup
         Policies  = $policies.ToArray()
+        Flags     = $flags.ToArray()
         Tasks     = $tasks.ToArray()
         Services  = $services.ToArray()
         Hosts     = $hosts.ToArray()
@@ -364,7 +435,8 @@ function Get-SelectionState {
     $state = @{}
     foreach ($row in $script:Rows) {
         switch ($row.Kind) {
-            'Policy'  { $state["P:$($row.Id)"] = $(if ($row.Checked) { "1|$(Get-RowValue $row)" } else { '0' }) }
+            'Policy'  { $state["P:$($row.Id)"] = $(if ($row.Checked) { "1|$(Format-PolicyValueText (Get-RowValue $row))" } else { '0' }) }
+            'Flag'    { $state["F:$($row.Id)"] = [string][bool]$row.Checked }
             'Task'    { $state["T:$($row.Id)"] = [string][bool]$row.Checked }
             'Service' { $state["S:$($row.Id)"] = [string][bool]$row.Checked }
             'Hosts'   { $state["H:$($row.Id)"] = [string][bool]$row.Checked }
@@ -373,6 +445,7 @@ function Get-SelectionState {
     $o = Get-OverrideSnapshot
     $state['O:search']  = if ($o.SearchEnabled)  { "1|$($o.EngineId)|$($o.CustomSearchUrl)" } else { '0' }
     $state['O:ntp']     = if ($o.NtpEnabled)     { "1|$($o.DestinationId)|$($o.NtpCustomUrl)" } else { '0' }
+    $state['O:home']    = if ($o.HomeEnabled)    { "1|$($o.HomeDestinationId)|$($o.HomeCustomUrl)" } else { '0' }
     $state['O:startup'] = if ($o.StartupEnabled) { "1|$($o.StartupModeId)|$($o.StartupUrls)" } else { '0' }
     return $state
 }
@@ -394,12 +467,13 @@ function Set-Baseline {
 
 function Get-PendingCounts {
     $current = Get-SelectionState
-    $main = 0; $hosts = 0
+    $main = 0; $hosts = 0; $flags = 0
     foreach ($key in $current.Keys) {
         if ($script:Baseline[$key] -eq $current[$key]) { continue }
         if ($key.StartsWith('H:')) { $hosts++ } else { $main++ }
+        if ($key.StartsWith('F:')) { $flags++ }
     }
-    return @{ Main = $main; Hosts = $hosts }
+    return @{ Main = $main; Hosts = $hosts; Flags = $flags }
 }
 
 # ---- Summary ---------------------------------------------------------------------------
@@ -410,7 +484,7 @@ function Update-SelectionSummary {
     $mode = if ([string]::IsNullOrWhiteSpace($script:ActiveProfile)) { 'Custom' } else { $script:ActiveProfile }
 
     $counts = @{}
-    foreach ($kind in @('Policy', 'Task', 'Service', 'Hosts')) { $counts[$kind] = @{ On = 0; All = 0 } }
+    foreach ($kind in @('Policy', 'Flag', 'Task', 'Service', 'Hosts')) { $counts[$kind] = @{ On = 0; All = 0 } }
     $pageCounts = @{}
     foreach ($row in $script:Rows) {
         $counts[$row.Kind].All++
@@ -423,6 +497,7 @@ function Update-SelectionSummary {
     $vm.ModeDescription = [string](Get-PresetDescription $mode)
     $vm.RiskLine = [string](T 'mode.risk' @((Get-PresetRisk $mode)))
     $vm.PolicyStat = Get-CountText $counts.Policy.On $counts.Policy.All
+    $vm.FlagStat = Get-CountText $counts.Flag.On $counts.Flag.All
     $vm.TaskStat = Get-CountText $counts.Task.On $counts.Task.All
     $vm.ServiceStat = Get-CountText $counts.Service.On $counts.Service.All
 
@@ -456,30 +531,58 @@ function Update-BarText {
     $vm.BarSubtitle = if ($script:PendingMain -gt 0) { [string](T 'bar.pending' @($script:PendingMain)) } else { [string](T 'bar.noPending') }
 }
 
-# Ticking a policy, task or service by hand, or picking a value, makes the
-# loadout Custom. Hosts groups do not: they are not part of a mode's apply.
+# Ticking a policy, flag, task or service by hand, or picking a value, makes
+# the loadout Custom. Hosts groups do not: they are not part of a mode's apply.
 function Set-CustomMode {
     if ($script:SuppressSelectionEvents) { return }
     $script:ActiveProfile = 'Custom'
 }
 
-# Loads a preset into the rows. Nothing is written until Apply.
+# Loads a preset into the rows. Nothing is written until Apply. A mode sets
+# every policy and flag row (and puts choice rows back on their mode value)
+# and the hosts groups it may touch; it leaves the System page, the
+# ManualOnly hosts groups and the Search & Startup picks alone, except that it
+# can set the startup mode. Default resets everything.
 function Set-PresetSelection {
     param([string]$Preset)
     $payload = Get-PresetPayload -Preset $Preset
+    $vm = $script:Vm
     Push-SuppressSelectionEvents
     try {
         foreach ($row in $script:Rows) {
             switch ($row.Kind) {
-                'Policy'  { $row.Checked = $payload.Policies -contains $row.Id }
-                'Task'    { $row.Checked = $payload.Tasks -contains $row.Id }
-                'Service' { $row.Checked = $payload.Services -contains $row.Id }
-                'Hosts'   { $row.Checked = $payload.Hosts -contains $row.Id }
+                'Policy' {
+                    $row.Checked = [bool]($row.Supported -and $payload.Policies -contains $row.Id)
+                    if ($row.Policy.Choices) {
+                        $value = if ($payload.Values.ContainsKey($row.Id)) { $payload.Values[$row.Id] } else { $row.Policy.ApplyValue }
+                        Set-RowChoiceByValue $row $value
+                    }
+                }
+                'Flag'    { $row.Checked = [bool]($row.Supported -and $payload.Flags -contains $row.Id) }
+                'Task'    { if ($payload.Reset) { $row.Checked = $false } }
+                'Service' { if ($payload.Reset) { $row.Checked = $false } }
+                'Hosts'   {
+                    if ($payload.Reset) { $row.Checked = $false }
+                    elseif (-not $row.Block.ManualOnly) { $row.Checked = $payload.Hosts -contains $row.Id }
+                }
+            }
+        }
+        if ($payload.Reset) {
+            $vm.SearchEnabled = $false
+            $vm.NtpEnabled = $false
+            $vm.HomeEnabled = $false
+            $vm.StartupEnabled = $false
+        } elseif ($payload.Startup) {
+            $index = Get-ChoiceIndex $vm.StartupModeItems $payload.Startup
+            if ($index -ge 0) {
+                $vm.StartupEnabled = $true
+                $vm.StartupModeIndex = $index
             }
         }
     } finally {
         Pop-SuppressSelectionEvents
     }
+    Update-OverrideStates
     $script:ActiveProfile = $Preset
 }
 
@@ -491,43 +594,79 @@ function Update-ModelText {
         foreach ($row in $list) { if ($row.Kind -eq 'Header') { Update-RowText $row } }
     }
     foreach ($item in $script:NavItems) { $item.Label = [string](T $item.LabelKey) }
-    foreach ($list in @($vm.EngineItems, $vm.DestinationItems, $vm.StartupModeItems, $vm.ThemeItems, $vm.ChannelItems)) {
+    foreach ($list in @($vm.EngineItems, $vm.DestinationItems, $vm.HomeDestinationItems, $vm.StartupModeItems, $vm.ThemeItems)) {
         Update-ChoiceLabels $list
     }
     Update-PresetText
     $vm.VersionText = [string](T 'settings.version' @($script:AppVersion))
     $vm.AboutTitle = [string](T 'app.title' @($script:AppVersion))
     $vm.BraveText = [string](T 'header.braveDetected' @($script:BraveVersion))
+    $vm.ChannelChipText = if ($script:DetectedChannels.Count -gt 0) {
+        [string](T 'header.channels' @(($script:DetectedChannels -join ', ')))
+    } else { [string](T 'header.noChannels') }
+    $vm.PolicyKeyText = ($script:PolicyPath -replace '^HKLM:', 'HKLM')
     $entry = @($script:LocaleList | Where-Object { $_.Code -eq $script:CurrentLocale })
     $vm.LanguageNote = if ($entry.Count -gt 0 -and -not $entry[0].Reviewed -and $script:CurrentLocale -ne 'en-US') {
         [string](T 'header.unreviewedLocale')
     } else { [string](T 'settings.languageDesc') }
-    Update-ChannelText
+    Update-DriftText
 }
 
-function Update-ChannelText {
-    $vm = $script:Vm
-    $id = Get-ChoiceId $vm.ChannelItems $vm.ChannelIndex
-    if ($id -eq '__ALL__') {
-        $vm.ChannelPath = [string](T 'header.hives' @(($script:TargetChannels -join ', '), $script:TargetChannels.Count))
-        $vm.ChannelChipText = [string](T 'header.allChannels')
-    } else {
-        $vm.ChannelPath = [string]$script:Channels[$script:TargetChannels[0]].Path
-        $vm.ChannelChipText = [string]$vm.ChannelItems[$vm.ChannelIndex].Label
+# ---- Drift banner (Home page) ------------------------------------------------------------
+# The last Get-DriftReport result. Each banner line is one item with its reason.
+$script:DriftReport = $null
+
+function Get-DriftItemTitle {
+    param($Item)
+    switch ($Item.Kind) {
+        'Policy'   { $row = $script:RowIndex["Policy:$($Item.Name)"]; if ($row) { return [string]$row.Title }; return $Item.Name }
+        'Flag'     { $row = $script:RowIndex["Flag:$($Item.Name)"]; if ($row) { return [string]$row.Title }; return $Item.Name }
+        'Task'     { return [string](T "task.$($Item.Name).description") }
+        'Service'  { return [string](T "service.$($Item.Name).description") }
+        'Hosts'    { return [string](T 'drift.hostsTitle') }
+        default    { return [string](T 'drift.overrideTitle' @($Item.Name)) }
     }
 }
 
-# Target channel from the channel picker's position.
-function Set-TargetFromChannelIndex {
-    $id = Get-ChoiceId $script:Vm.ChannelItems $script:Vm.ChannelIndex
-    if ($id -eq '__ALL__') {
-        $targets = @(Get-DetectedChannels)
-        if ($targets.Count -eq 0) { $targets = @('Stable') }
-    } elseif ($id) {
-        $targets = @($id)
-    } else { return $false }
-    if (($targets -join ',') -eq ($script:TargetChannels -join ',')) { return $false }
-    $script:TargetChannels = $targets
-    Update-ChannelText
-    return $true
+function Get-DriftItemDetail {
+    param($Item)
+    $where = if ($Item.Channel) { " [$($Item.Channel)]" } else { '' }
+    switch ($Item.Status) {
+        'retired' {
+            $reason = if ($Item.Reason) { [string](T "retired.reason.$($Item.Reason)") } else { '' }
+            return [string](T 'drift.retiredDetail' @($Item.Name, $reason)) + $where
+        }
+        'repeat' { return [string](T 'drift.repeatDetail' @($Item.Name)) + $where }
+        default {
+            $actual = if ($null -eq $Item.Actual) { [string](T 'drift.missing') } else { $Item.Actual }
+            return [string](T 'drift.revertedDetail' @($Item.Name, $Item.Expected, $actual)) + $where
+        }
+    }
+}
+
+function Update-DriftText {
+    $vm = $script:Vm
+    $report = $script:DriftReport
+    $vm.DriftItems.Clear()
+    $items = if ($report) { @($report.Items) } else { @() }
+    if ($items.Count -eq 0) {
+        $vm.DriftVisibility = $script:Collapsed
+        return
+    }
+    $mode = Resolve-PresetId "$($report.Mode)"
+    $vm.DriftTitle = [string](T 'drift.title' @((Get-PresetName $mode), $items.Count))
+    $reverted = @($items | Where-Object { $_.Status -ne 'retired' }).Count
+    $retired = @($items | Where-Object { $_.Status -eq 'retired' }).Count
+    # The record stores a sortable timestamp; show it the way Windows shows dates.
+    $saved = [datetime]::MinValue
+    $when = if ([datetime]::TryParse("$($report.SavedAt)", [ref]$saved)) { $saved.ToString('g') } else { "$($report.SavedAt)" }
+    $vm.DriftText = [string](T 'drift.text' @($when))
+    foreach ($item in $items) {
+        $vm.DriftItems.Add((New-BfoObject @{
+            Title = (Get-DriftItemTitle $item); Detail = (Get-DriftItemDetail $item); Status = $item.Status
+        }))
+    }
+    $vm.DriftReapplyVisibility = ConvertTo-Visibility ($reverted -gt 0)
+    $vm.DriftCleanupVisibility = ConvertTo-Visibility ($retired -gt 0)
+    $vm.DriftVisibility = $script:Visible
 }

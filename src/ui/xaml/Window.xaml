@@ -202,6 +202,47 @@
                 </Border>
               </WrapPanel>
 
+              <!-- Drift: settings from the last apply that are no longer in effect
+                   (src\core\Drift.ps1). Hidden while everything is in place. -->
+              <Border x:Name="DriftBanner" Style="{StaticResource CautionBar}" Margin="0,18,0,0" Visibility="{Binding DriftVisibility}">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Text="&#xE7BA;" Style="{StaticResource IconText}" Foreground="{DynamicResource CautionText}" VerticalAlignment="Top" Margin="0,1,12,0"/>
+                  <StackPanel Grid.Column="1">
+                    <TextBlock Text="{Binding DriftTitle}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding DriftText}" Style="{StaticResource SecondaryText}" Margin="0,2,0,8"/>
+                    <ItemsControl ItemsSource="{Binding DriftItems}" Focusable="False">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <Grid Margin="0,2,0,4">
+                            <Grid.ColumnDefinitions>
+                              <ColumnDefinition Width="Auto"/>
+                              <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Ellipse Width="5" Height="5" Fill="{DynamicResource CautionText}" VerticalAlignment="Top" Margin="0,8,11,0"/>
+                            <StackPanel Grid.Column="1">
+                              <TextBlock Text="{Binding Title}" TextWrapping="Wrap"/>
+                              <TextBlock Text="{Binding Detail}" Style="{StaticResource CaptionText}" TextWrapping="Wrap"/>
+                            </StackPanel>
+                          </Grid>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <WrapPanel Margin="0,10,0,0">
+                      <Button x:Name="BtnDriftReapply" Style="{StaticResource AccentButton}" Content="{DynamicResource drift.reapply}" Margin="0,0,8,4"
+                              Visibility="{Binding DriftReapplyVisibility}" IsEnabled="{Binding IsIdle}"/>
+                      <Button x:Name="BtnDriftCleanup" Content="{DynamicResource drift.cleanup}" Margin="0,0,8,4"
+                              Visibility="{Binding DriftCleanupVisibility}" IsEnabled="{Binding IsIdle}"/>
+                      <Button x:Name="BtnDriftAccept" Style="{StaticResource SubtleButton}" Content="{DynamicResource drift.accept}" Margin="0,0,8,4"
+                              IsEnabled="{Binding IsIdle}"/>
+                    </WrapPanel>
+                  </StackPanel>
+                </Grid>
+              </Border>
+
               <TextBlock Text="{DynamicResource home.modesTitle}" Style="{StaticResource SectionText}" Margin="2,22,0,2"/>
               <TextBlock Text="{DynamicResource mode.intro}" Style="{StaticResource SecondaryText}" Margin="2,0,0,10"/>
               <ItemsControl x:Name="PresetCards" ItemsSource="{Binding Presets}" Margin="-4,0,-4,0">
@@ -262,6 +303,7 @@
                       <ColumnDefinition Width="*"/>
                       <ColumnDefinition Width="*"/>
                       <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Margin="0,0,16,0">
                       <TextBlock Text="{DynamicResource home.statMode}" Style="{StaticResource CaptionText}"/>
@@ -272,10 +314,14 @@
                       <TextBlock Text="{Binding PolicyStat}" Style="{StaticResource SubtitleText}" FontSize="18" Margin="0,2,0,0"/>
                     </StackPanel>
                     <StackPanel Grid.Column="2" Margin="0,0,16,0">
+                      <TextBlock Text="{DynamicResource home.statFlags}" Style="{StaticResource CaptionText}"/>
+                      <TextBlock Text="{Binding FlagStat}" Style="{StaticResource SubtitleText}" FontSize="18" Margin="0,2,0,0"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="3" Margin="0,0,16,0">
                       <TextBlock Text="{DynamicResource home.statTasks}" Style="{StaticResource CaptionText}"/>
                       <TextBlock Text="{Binding TaskStat}" Style="{StaticResource SubtitleText}" FontSize="18" Margin="0,2,0,0"/>
                     </StackPanel>
-                    <StackPanel Grid.Column="3">
+                    <StackPanel Grid.Column="4">
                       <TextBlock Text="{DynamicResource home.statServices}" Style="{StaticResource CaptionText}"/>
                       <TextBlock Text="{Binding ServiceStat}" Style="{StaticResource SubtitleText}" FontSize="18" Margin="0,2,0,0"/>
                     </StackPanel>
@@ -447,6 +493,44 @@
                       <TextBlock Grid.Row="1" Text="{DynamicResource searchTab.ntpCustomLabel}" VerticalAlignment="Center" Margin="0,0,16,0"/>
                       <TextBox Grid.Row="1" Grid.Column="1" Style="{StaticResource MonoBox}"
                                Text="{Binding NtpCustomUrl, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding NtpCustomUrlEnabled}"/>
+                    </Grid>
+                  </Border>
+                </StackPanel>
+              </Border>
+
+              <!-- Homepage (the home button) -->
+              <Border Style="{StaticResource Card}" Padding="0" Margin="0,0,0,4">
+                <StackPanel>
+                  <Grid Margin="16,13,16,13">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="Auto"/>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="&#xE80F;" Style="{StaticResource RowIcon}"/>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                      <TextBlock Text="{DynamicResource searchTab.secHome}" TextWrapping="Wrap"/>
+                      <TextBlock Text="{DynamicResource searchTab.chkHome}" Style="{StaticResource CaptionText}"/>
+                    </StackPanel>
+                    <CheckBox x:Name="ChkHome" Grid.Column="2" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding HomeEnabled}"
+                              VerticalAlignment="Center" Margin="20,0,0,0"/>
+                  </Grid>
+                  <Border BorderBrush="{DynamicResource Divider}" BorderThickness="0,1,0,0" Padding="56,14,16,16" IsEnabled="{Binding HomeEnabled}">
+                    <Grid>
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" MinWidth="150"/>
+                        <ColumnDefinition Width="*"/>
+                      </Grid.ColumnDefinitions>
+                      <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                      </Grid.RowDefinitions>
+                      <TextBlock Text="{DynamicResource searchTab.ntpOpenLabel}" VerticalAlignment="Center" Margin="0,0,16,8"/>
+                      <ComboBox x:Name="CmbHome" Grid.Column="1" HorizontalAlignment="Left" MinWidth="320" Margin="0,0,0,8"
+                                ItemsSource="{Binding HomeDestinationItems}" SelectedIndex="{Binding HomeDestinationIndex}"/>
+                      <TextBlock Grid.Row="1" Text="{DynamicResource searchTab.ntpCustomLabel}" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                      <TextBox Grid.Row="1" Grid.Column="1" Style="{StaticResource MonoBox}"
+                               Text="{Binding HomeCustomUrl, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding HomeCustomUrlEnabled}"/>
                     </Grid>
                   </Border>
                 </StackPanel>
@@ -739,11 +823,10 @@
                   </Grid.ColumnDefinitions>
                   <TextBlock Text="&#xE8B7;" Style="{StaticResource RowIcon}"/>
                   <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                    <TextBlock Text="{DynamicResource settings.channel}"/>
-                    <TextBlock Text="{Binding ChannelPath}" Style="{StaticResource MonoText}" Margin="0,2,0,0"/>
+                    <TextBlock Text="{DynamicResource settings.policyKey}"/>
+                    <TextBlock Text="{Binding PolicyKeyText}" Style="{StaticResource MonoText}" Margin="0,2,0,0"/>
+                    <TextBlock Text="{DynamicResource settings.policyKeyDesc}" Style="{StaticResource CaptionText}" Margin="0,2,0,0"/>
                   </StackPanel>
-                  <ComboBox x:Name="CmbChannel" Grid.Column="2" MinWidth="220" VerticalAlignment="Center" Margin="16,0,0,0"
-                            ItemsSource="{Binding ChannelItems}" SelectedIndex="{Binding ChannelIndex}"/>
                 </Grid>
               </Border>
               <CheckBox x:Name="ChkBackup" Style="{StaticResource SettingCard}" IsChecked="{Binding Backup}">
@@ -963,10 +1046,7 @@
                 <TextBlock Text="{Binding BarSubtitle}" Style="{StaticResource CaptionText}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
               </StackPanel>
               <StackPanel Grid.Column="1" Orientation="Horizontal">
-                <TextBlock Text="{DynamicResource bar.target}" Style="{StaticResource CaptionText}" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                <ComboBox x:Name="BarChannel" Width="200" ItemsSource="{Binding ChannelItems}" SelectedIndex="{Binding ChannelIndex}"
-                          ToolTip="{Binding ChannelPath}"/>
-                <Button x:Name="BtnActivity" Style="{StaticResource SubtleButton}" Margin="8,0,0,0" Padding="9,5,9,6"
+                <Button x:Name="BtnActivity" Style="{StaticResource SubtleButton}" Margin="0,0,0,0" Padding="9,5,9,6"
                         ToolTip="{DynamicResource bar.activity}" AutomationProperties.Name="{DynamicResource bar.activity}">
                   <Grid>
                     <TextBlock Text="&#xE81C;" Style="{StaticResource IconText}"/>

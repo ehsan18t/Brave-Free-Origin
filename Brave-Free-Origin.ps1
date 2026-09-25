@@ -22,13 +22,19 @@ param(
     # Resolved before elevation and forwarded across the UAC boundary, so an
     # elevated administrator account still reads and writes the original
     # user's preference file instead of its own.
-    [string]$BfoSettingsPath
+    [string]$BfoSettingsPath,
+
+    # The original user's LOCALAPPDATA, forwarded the same way: Brave's user
+    # data (the Local State that holds brave://flags) and a per-user install
+    # live there, not in the elevated account's folder.
+    [string]$BfoLocalAppData
 )
 
 #region Elevation -------------------------------------------------------------
 if (-not $BfoSettingsPath) {
     $BfoSettingsPath = Join-Path $env:LOCALAPPDATA 'Brave-Free-Origin\settings.json'
 }
+if (-not $BfoLocalAppData) { $BfoLocalAppData = $env:LOCALAPPDATA }
 
 $currentPrincipal = New-Object Security.Principal.WindowsPrincipal(
     [Security.Principal.WindowsIdentity]::GetCurrent())
@@ -41,6 +47,7 @@ if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Adm
         '-ExecutionPolicy', 'Bypass'
         '-File', ('"{0}"' -f $PSCommandPath)
         '-BfoSettingsPath', ('"{0}"' -f $BfoSettingsPath)
+        '-BfoLocalAppData', ('"{0}"' -f $BfoLocalAppData)
     )
     if ($Lang) { $relaunchArgs += @('-Lang', ('"{0}"' -f $Lang)) }
     Start-Process -FilePath 'powershell.exe' -Verb RunAs -WindowStyle Hidden -ArgumentList $relaunchArgs
@@ -50,7 +57,7 @@ if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Adm
 
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
 
-$script:AppVersion = '2.0'
+$script:AppVersion = '2.1'
 
 #region Load order ------------------------------------------------------------
 # The app is split across src\ and dot-sourced here, so every file shares this
@@ -71,9 +78,11 @@ $script:SourceFiles = @(
     'core\Tweaks.ps1'
     'core\Registry.ps1'
     'core\Hosts.ps1'
+    'core\Flags.ps1'
     'core\SearchStartup.ps1'
     'core\Presets.ps1'
     'core\Plan.ps1'
+    'core\Drift.ps1'
     'core\Apply.ps1'
     'core\Scriptlets.ps1'
     'core\State.ps1'
@@ -94,6 +103,8 @@ $script:RequiredFiles = @(
     'tweaks\tags.psd1'
     'tweaks\system.psd1'
     'tweaks\hosts.psd1'
+    'tweaks\flags.psd1'
+    'tweaks\retired.psd1'
     'tweaks\search.psd1'
     'tweaks\presets.psd1'
 )
@@ -135,6 +146,7 @@ foreach ($sourceFile in $script:SourceFiles) {
         $startupLocale = Resolve-StartupLocale -Requested $Lang -Saved "$($script:BfoSettings['language'])"
         if ($startupLocale -ne 'en-US') { [void](Set-BfoLocale -Code $startupLocale) }
         $script:BraveVersion = Get-BraveVersion
+        $script:BraveVersionInfo = ConvertTo-BraveVersionInfo $script:BraveVersion
     }
     try {
         . (Join-Path $script:AppRoot "src\$sourceFile")
@@ -175,7 +187,7 @@ Write-BfoLog 'Loading current policy state...'
 # is waiting on it. If it fails here, the worker reads it instead.
 $initialLoad = $false
 try {
-    Set-SelectionFromMachine (Get-BfoMachineState -Channel $script:TargetChannels[0])
+    Set-SelectionFromMachine (Get-BfoMachineState)
     Write-BfoLog 'Loaded current system state.'
     $initialLoad = $true
 } catch {
@@ -185,6 +197,9 @@ try {
 # The worker loads core\ in the background, for everything that writes.
 Start-BfoWorker
 if (-not $initialLoad) { Invoke-BfoLoadState -Quiet }
+# Compares the record of the last apply with this PC; the Home page shows a
+# banner when something was reverted or retired.
+Invoke-BfoDriftCheck
 $script:JobTimer.Start()
 
 [void]$script:Window.ShowDialog()

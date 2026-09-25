@@ -22,6 +22,59 @@ function Remove-PolicyValue {
     } catch { return $false }
 }
 
+# A LIST policy is a subkey named after the policy holding the strings as
+# values 1, 2, 3 and so on, the same layout as RestoreOnStartupURLs.
+function Set-PolicyList {
+    param([string]$Path, [string]$Name, [string[]]$Values)
+    $listPath = Join-Path $Path $Name
+    if (Test-Path $listPath) { Remove-Item -Path $listPath -Recurse -Force }
+    New-Item -Path $listPath -Force | Out-Null
+    $i = 1
+    foreach ($value in @($Values)) {
+        New-ItemProperty -Path $listPath -Name "$i" -Value $value -PropertyType String -Force | Out-Null
+        $i++
+    }
+}
+
+function Remove-PolicyList {
+    param([string]$Path, [string]$Name)
+    $listPath = Join-Path $Path $Name
+    if (-not (Test-Path $listPath)) { return $false }
+    Remove-Item -Path $listPath -Recurse -Force -ErrorAction Stop
+    return $true
+}
+
+# One policy, whatever its type. Set-/Remove-Policy are what Apply, Re-apply
+# and Clean up call, so a LIST policy is never written as a plain value.
+function Set-Policy {
+    param([string]$Path, [string]$Name, [string]$Type, $Value)
+    if ($Type -eq 'LIST') { Set-PolicyList -Path $Path -Name $Name -Values ([string[]]@($Value)) }
+    else { Set-PolicyValue -Path $Path -Name $Name -Type $Type -Value $Value }
+}
+
+function Remove-Policy {
+    param([string]$Path, [string]$Name, [string]$Type)
+    if ($Type -eq 'LIST') { return (Remove-PolicyList -Path $Path -Name $Name) }
+    return (Remove-PolicyValue -Path $Path -Name $Name)
+}
+
+# A value as reports show it: a list as its items joined by commas.
+function Format-PolicyValueText {
+    param($Value)
+    if ($Value -is [array]) { return (@($Value) -join ', ') }
+    return "$Value"
+}
+
+# Registry DWORDs come back as Int32 and lists as string arrays, so two values
+# are compared as text; lists item by item, in order.
+function Test-PolicyValueEqual {
+    param($Actual, $Expected)
+    if ($Actual -is [array] -or $Expected -is [array]) {
+        return ((@($Actual) -join "`n") -eq (@($Expected) -join "`n"))
+    }
+    return ("$Actual" -eq "$Expected")
+}
+
 # Writes a table built by one of the Get-Desired*Override functions:
 # name -> @{ Type = 'DWORD' or 'STRING'; Value = ... }, in table order.
 function Write-DesiredValues {
@@ -58,6 +111,21 @@ function Get-RegistryValueTable {
             foreach ($p in $props.PSObject.Properties) {
                 if ($script:RegistryProviderProperties -notcontains $p.Name) { $values[$p.Name] = $p.Value }
             }
+        }
+    }
+    return $values
+}
+
+# Every policy under the policy key: the plain values, plus each LIST policy
+# the app knows as a string array. One read serves a whole preview or check.
+function Get-PolicyValueTable {
+    param([string]$Path)
+    $values = Get-RegistryValueTable -Path $Path
+    foreach ($cat in $script:Policies.Keys) {
+        foreach ($p in $script:Policies[$cat]) {
+            if ($p.Type -ne 'LIST') { continue }
+            $listPath = Join-Path $Path $p.Name
+            if (Test-Path $listPath) { $values[$p.Name] = [string[]]@(Get-RegistryNumberedValues -Path $listPath) }
         }
     }
     return $values

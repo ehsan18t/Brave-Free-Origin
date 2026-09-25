@@ -49,11 +49,9 @@ back to English at runtime, key by key.
 Delete `generated` if you copied it from `en-US.json` — that flag is specific
 to the generated reference file.
 
-The shipped `zh-CN.json` is the worked example of this: `translators` is empty
-and `reviewed` is `false`, because the language was requested in
-[#4](https://github.com/TahaHydra/Brave-Free-Origin/issues/4) but the Chinese
-wording has not been through a native speaker yet. If you can review it, that
-is a very welcome PR.
+The app currently ships English only, so a new file starts from `en-US.json`.
+If you are the only person who has read your wording, leave `translators` as
+yourself and `reviewed` as `false` until someone else checks it.
 
 ---
 
@@ -205,8 +203,8 @@ then a same-language file, then English.
 
 The same-language step is script-aware, and this matters if you are adding a
 Chinese variant. `zh-CN`, `zh-SG`, `zh-MY`, `zh-Hans-*` and bare `zh` resolve
-to `zh-CN.json`. `zh-TW`, `zh-HK`, `zh-MO` and `zh-Hant-*` resolve to a
-Traditional Chinese file if one is installed, and to **English** if it is not —
+to a `zh-CN.json`. `zh-TW`, `zh-HK`, `zh-MO` and `zh-Hant-*` resolve to a
+Traditional Chinese file if one is installed, and to **English** if it is not:
 Simplified text is not an acceptable substitute for a Traditional reader, so
 the app will not quietly serve it. Add `zh-TW.json` and Traditional Chinese
 users pick it up automatically. Languages without a Simplified/Traditional

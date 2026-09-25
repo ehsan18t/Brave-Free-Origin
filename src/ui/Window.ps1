@@ -104,6 +104,11 @@ function Set-ListPage {
         $vm.ListTitle = [string](T 'tab.system')
         $vm.ListIntro = [string](T 'system.intro')
         $vm.ListIntroVisibility = $script:Visible
+    } elseif ($Id -eq 'flags') {
+        $vm.ListTitle = [string](T 'tab.flags')
+        $vm.ListIntro = [string](T 'flags.intro')
+        $vm.ListIntroVisibility = $script:Visible
+        $vm.SelectButtonsVisibility = $script:Visible
     } else {
         $vm.ListTitle = [string](T ('category.' + $Id.Substring(4)))
         $vm.SelectButtonsVisibility = $script:Visible
@@ -242,7 +247,8 @@ foreach ($list in @($ui.ListItems, $ui.HostsItems)) {
 function Set-PageRowsChecked {
     param([bool]$Checked)
     foreach ($row in $script:PageRows[$script:CurrentPage]) {
-        if ($row.Kind -ne 'Header') { $row.Checked = $Checked }
+        # A row the installed Brave does not support stays unticked.
+        if ($row.Kind -ne 'Header' -and $row.Enabled) { $row.Checked = $Checked }
     }
     Set-CustomMode
     Update-SelectionSummary
@@ -322,15 +328,6 @@ $ui.CmbTheme.Add_SelectionChanged({
 $script:Window.Add_Activated({ Set-BfoTheme })
 $script:Window.Add_SourceInitialized({ Update-BfoTitleBar })
 $script:Window.Add_ContentRendered({ Update-BfoWindowIcon })
-
-# ---- Target channel -----------------------------------------------------------------
-foreach ($combo in @($ui.BarChannel, $ui.CmbChannel)) {
-    $combo.Add_SelectionChanged({
-        $e = $_
-        if ($e.RemovedItems.Count -eq 0) { return }
-        if (Set-TargetFromChannelIndex) { Write-BfoLog "Target channel(s): $($script:TargetChannels -join ', ')" }
-    })
-}
 
 # ---- Activity panel ----------------------------------------------------------------
 $script:ActivityOpen = $false

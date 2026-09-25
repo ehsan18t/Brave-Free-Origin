@@ -12,9 +12,11 @@ $script:SearchOverrideValueNames = @(
     'DefaultSearchProviderSuggestURL'
 )
 
-# The three overrides read the Overrides part of a selection snapshot (see
+# The four overrides read the Overrides part of a selection snapshot (see
 # core\State.ps1): SearchEnabled, EngineId, CustomSearchUrl, NtpEnabled,
-# DestinationId, NtpCustomUrl, StartupEnabled, StartupModeId and StartupUrls.
+# DestinationId, NtpCustomUrl, HomeEnabled, HomeDestinationId, HomeCustomUrl,
+# StartupEnabled, StartupModeId and StartupUrls. This page is the only writer
+# of the startup, homepage and new tab policies.
 function Get-DesiredSearchOverride {
     param($Overrides)
     $desired = [ordered]@{}
@@ -54,6 +56,23 @@ function Get-DesiredNtpOverride {
     $url = Resolve-Destination -DestinationId $Overrides.DestinationId -CustomUrl "$($Overrides.NtpCustomUrl)" -SearchEngineHome $engineHome
     if ([string]::IsNullOrWhiteSpace($url)) { throw 'New tab override has no resolvable URL.' }
     $desired['NewTabPageLocation'] = @{ Type='STRING'; Value=$url }
+    return $desired
+}
+
+# The home button's page. Uses the same destinations as the new tab page.
+$script:HomeOverrideValueNames = @('HomepageIsNewTabPage', 'HomepageLocation')
+
+function Get-DesiredHomeOverride {
+    param($Overrides)
+    $desired = [ordered]@{}
+    if (-not $Overrides.HomeEnabled) { return $desired }
+
+    $engine = $script:SearchEngines[$Overrides.EngineId]
+    $engineHome = if (-not $engine -or $engine.IsCustom) { '' } else { $engine.Home }
+    $url = Resolve-Destination -DestinationId $Overrides.HomeDestinationId -CustomUrl "$($Overrides.HomeCustomUrl)" -SearchEngineHome $engineHome
+    if ([string]::IsNullOrWhiteSpace($url)) { throw 'Homepage override has no resolvable URL.' }
+    $desired['HomepageIsNewTabPage'] = @{ Type='DWORD'; Value=0 }
+    $desired['HomepageLocation'] = @{ Type='STRING'; Value=$url }
     return $desired
 }
 
@@ -131,6 +150,18 @@ function Write-NtpOverride {
 
     Write-DesiredValues -Path $Path -Desired $desired
     Write-BfoLog "New tab page override -> $($desired['NewTabPageLocation'].Value)" 'OK'
+    return $true
+}
+
+function Write-HomeOverride {
+    param([string]$Path, $Overrides)
+    foreach ($n in $script:HomeOverrideValueNames) { [void](Remove-PolicyValue -Path $Path -Name $n) }
+    try { $desired = Get-DesiredHomeOverride -Overrides $Overrides }
+    catch { Write-BfoLog "Homepage override skipped: $($_.Exception.Message)" 'WARN'; return $false }
+    if ($desired.Count -eq 0) { return $false }
+
+    Write-DesiredValues -Path $Path -Desired $desired
+    Write-BfoLog "Homepage override -> $($desired['HomepageLocation'].Value)" 'OK'
     return $true
 }
 

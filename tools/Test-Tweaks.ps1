@@ -7,14 +7,16 @@
     that passes here is a file the app will accept, then checks what the loader
     alone cannot:
 
-      * policy names are unique across every tweaks\policies file
-      * every category, policy, choice, task, service, hosts group, search
-        engine, destination and startup mode has its string in the English
-        catalog (src\strings\en-US.ps1)
+      * policy names are unique across every tweaks\policies file, and every
+        policy is in tools\known-policies.psd1 (verified against the Chromium
+        and brave-core sources) with the same MinChromium
+      * every category, policy, choice, flag, task, service, hosts group,
+        retired reason, search engine, destination and startup mode has its
+        string in the English catalog (src\strings\en-US.ps1)
       * hosts group ids are unique and every domain looks like a host name
-      * presets only name existing policies, hosts groups and other presets,
-        Include has no cycles, Flag is Recommended or MaxPrivacy, and every
-        preset button has a definition
+      * modes only name existing policies, flags, hosts groups, startup modes
+        and other modes, Include has no cycles, modes never tick a ManualOnly
+        hosts group, and old mode ids never map onto Max
 
     Nothing is written and nothing is applied to the machine.
     Runs on Windows PowerShell 5.1 and on PowerShell 7 with identical results.
@@ -64,15 +66,17 @@ function Test-Key {
 }
 
 # ---- Load through the app ----------------------------------------------------
-# Both files only define functions and script-scope tables; neither touches the
+# These files only define functions and script-scope tables; none touches the
 # machine or creates a control.
 $script:AppRoot = $AppRoot
 $script:StartupError = $null
+. (Join-Path $AppRoot 'src\core\Registry.ps1')
 . (Join-Path $AppRoot 'src\core\Tweaks.ps1')
 if ($script:StartupError) {
     Write-Output $script:StartupError
     exit 1
 }
+. (Join-Path $AppRoot 'src\core\SearchStartup.ps1')
 . (Join-Path $AppRoot 'src\core\Presets.ps1')
 
 # ---- Tags --------------------------------------------------------------------
@@ -84,30 +88,65 @@ foreach ($id in $script:ImpactIds) {
 }
 
 # ---- Policies ----------------------------------------------------------------
+$knownData = Import-PowerShellDataFile -LiteralPath (Join-Path $AppRoot 'tools\known-policies.psd1')
+$known = $knownData.Policies
+$allowedFields = @('Name', 'Type', 'ApplyValue', 'BraveDefault', 'MinChromium', 'MaxChromium', 'Choices', 'LegacyNames', 'Effect', 'Impacts')
 $seen = @{}
 $policyCount = 0
 foreach ($cat in $script:Policies.Keys) {
     Test-Key "category.$cat" "Policy category '$cat'"
     foreach ($p in $script:Policies[$cat]) {
         $policyCount++
-        if ($seen.ContainsKey($p.Name)) { Add-Failure "Policy '$($p.Name)' is defined in both '$($seen[$p.Name])' and '$cat'." }
+        $where = "Policy '$($p.Name)'"
+        if ($seen.ContainsKey($p.Name)) { Add-Failure "$where is defined in both '$($seen[$p.Name])' and '$cat'." }
         $seen[$p.Name] = $cat
-        Test-Key "policy.$($p.Name).description" "Policy '$($p.Name)'"
-        foreach ($k in @('Recommended', 'MaxPrivacy')) {
-            if ($p.ContainsKey($k) -and $p[$k] -isnot [bool]) { Add-Failure "Policy '$($p.Name)': $k must be `$true or `$false." }
+        Test-Key "policy.$($p.Name).description" $where
+        foreach ($k in $p.Keys) { if ($allowedFields -notcontains $k) { Add-Failure "${where}: unknown field '$k'." } }
+        if (-not $known.ContainsKey($p.Name)) {
+            Add-Failure "$where is not in tools\known-policies.psd1. Check it exists, is not deprecated and supports Windows in the Chromium or brave-core policy definitions, then add it there."
+        } else {
+            if ($known[$p.Name].Min -ne $p.MinChromium) { Add-Failure "${where}: MinChromium $($p.MinChromium) disagrees with the source ($($known[$p.Name].Min))." }
+            if ($known[$p.Name].Max -and $known[$p.Name].Max -ne $p.MaxChromium) { Add-Failure "${where}: MaxChromium must be $($known[$p.Name].Max), as in the source." }
         }
-        if ($p.Type -eq 'DWORD' -and $p.ApplyValue -isnot [int]) { Add-Failure "Policy '$($p.Name)': a DWORD ApplyValue must be a number." }
-        if ($p.Type -eq 'STRING' -and $p.ApplyValue -isnot [string]) { Add-Failure "Policy '$($p.Name)': a STRING ApplyValue must be quoted text." }
+        if ($p.Type -eq 'DWORD' -and $p.ApplyValue -isnot [int]) { Add-Failure "${where}: a DWORD ApplyValue must be a number." }
+        if ($p.Type -eq 'STRING' -and $p.ApplyValue -isnot [string]) { Add-Failure "${where}: a STRING ApplyValue must be quoted text." }
+        if ($p.Type -eq 'LIST' -and @($p.ApplyValue | Where-Object { $_ -isnot [string] }).Count -gt 0) { Add-Failure "${where}: a LIST ApplyValue must be a list of quoted text." }
         if ($p.Choices) {
             foreach ($choiceId in $p.Choices.Keys) { Test-Key "policy.$($p.Name).choice.$choiceId" "Choice '$choiceId' of '$($p.Name)'" }
-            if (@($p.Choices.Values) -notcontains $p.ApplyValue) { Add-Failure "Policy '$($p.Name)': ApplyValue is not one of its Choices." }
+            if (@($p.Choices.Values) -notcontains $p.ApplyValue) { Add-Failure "${where}: ApplyValue is not one of its Choices." }
         }
     }
 }
 
+# The Search & Startup page writes these itself; they must be real too.
+foreach ($name in @($script:SearchOverrideValueNames) + @('NewTabPageLocation', 'HomepageIsNewTabPage', 'HomepageLocation', 'RestoreOnStartup', 'RestoreOnStartupURLs')) {
+    if (-not $known.ContainsKey($name)) { Add-Failure "Search & Startup writes '$name', which is not in tools\known-policies.psd1." }
+    if ($seen.ContainsKey($name)) { Add-Failure "'$name' belongs to the Search & Startup page and must not be a policy row too." }
+}
+
+# ---- Retired policies ------------------------------------------------------------
+foreach ($name in $script:RetiredPolicies.Keys) {
+    $entry = $script:RetiredPolicies[$name]
+    Test-Key "retired.reason.$($entry.Reason)" "Retired policy '$name'"
+    if ($entry.Replacement -and -not $seen.ContainsKey($entry.Replacement)) { Add-Failure "Retired policy '$name': Replacement '$($entry.Replacement)' is not a policy row." }
+}
+
+# ---- Flags -----------------------------------------------------------------------
+$flagNames = @()
+foreach ($f in $script:Flags) {
+    if ($flagNames -contains $f.Name) { Add-Failure "Flag '$($f.Name)' is listed twice." }
+    $flagNames += $f.Name
+    Test-Key "flag.$($f.Name).description" "Flag '$($f.Name)'"
+    if ($f.MinBrave -gt 85) { Add-Failure "Flag '$($f.Name)': flags must have been in Brave since 1.85 or earlier (MinBrave $($f.MinBrave))." }
+}
+
 # ---- System ------------------------------------------------------------------
 foreach ($t in $script:ScheduledTasks) { Test-Key "task.$($t.Name).description" "Scheduled task '$($t.Name)'" }
-foreach ($s in $script:Services)       { Test-Key "service.$($s.Name).description" "Service '$($s.Name)'" }
+foreach ($s in $script:Services) {
+    Test-Key "service.$($s.Name).description" "Service '$($s.Name)'"
+    # Chromium decrypts cookies and passwords through this service.
+    if (@($s.Match) -like '*ElevationService*') { Add-Failure "Service '$($s.Name)' matches the Brave Elevation Service, which must never be disabled." }
+}
 
 # ---- Hosts -------------------------------------------------------------------
 $hostsIds = @()
@@ -128,25 +167,39 @@ foreach ($table in @($script:SearchEngines, $script:DestinationOptions, $script:
 }
 
 # ---- Presets -----------------------------------------------------------------
-$payloadless = @('CurrentState', 'Custom')
 foreach ($id in $script:PresetKeys) {
-    Test-Key "preset.$id.name" "Preset '$id'"
-    if ($payloadless -notcontains $id -and -not $script:PresetDefinitions.ContainsKey($id)) {
-        Add-Failure "Preset '$id' has a button but no entry in tweaks\presets.psd1."
-    }
+    foreach ($part in @('name', 'description', 'risk')) { Test-Key "preset.$id.$part" "Mode '$id'" }
 }
+$manualHosts = @($script:HostsBlocks | Where-Object { $_.ManualOnly } | ForEach-Object { $_.Id })
 foreach ($id in $script:PresetDefinitions.Keys) {
     $def = $script:PresetDefinitions[$id]
-    $where = "tweaks\presets.psd1, preset '$id'"
-    if ($script:PresetKeys -notcontains $id -or $payloadless -contains $id) { Add-Failure "$where is not a preset the app offers." }
+    $where = "tweaks\presets.psd1, mode '$id'"
+    if ($script:PresetOrder -notcontains $id) { Add-Failure "$where is not in Order, so it has no card." }
     foreach ($k in $def.Keys) {
-        if (@('Include', 'Flag', 'Policies', 'Tasks', 'Services', 'Hosts') -notcontains $k) { Add-Failure "${where}: unknown field '$k'." }
+        if (@('Include', 'Policies', 'Values', 'Flags', 'Hosts', 'Startup', 'Reset') -notcontains $k) { Add-Failure "${where}: unknown field '$k'." }
     }
-    if ($def.Flag -and @('Recommended', 'MaxPrivacy') -notcontains $def.Flag) { Add-Failure "${where}: Flag must be 'Recommended' or 'MaxPrivacy'." }
-    foreach ($k in @('Tasks', 'Services')) { if ($def[$k] -isnot [bool]) { Add-Failure "${where}: $k must be `$true or `$false." } }
+    if ($def.ContainsKey('Reset') -and $def.Reset -isnot [bool]) { Add-Failure "${where}: Reset must be `$true or `$false." }
     foreach ($name in @($def.Policies | Where-Object { $_ })) { if (-not $seen.ContainsKey($name)) { Add-Failure "${where}: unknown policy '$name'." } }
-    foreach ($h in @($def.Hosts | Where-Object { $_ })) { if ($hostsIds -notcontains $h) { Add-Failure "${where}: unknown hosts group '$h'." } }
-    foreach ($inc in @($def.Include | Where-Object { $_ })) { if (-not $script:PresetDefinitions.ContainsKey($inc)) { Add-Failure "${where}: Include names unknown preset '$inc'." } }
+    foreach ($name in @($def.Flags | Where-Object { $_ })) { if ($flagNames -notcontains $name) { Add-Failure "${where}: unknown flag '$name'." } }
+    foreach ($h in @($def.Hosts | Where-Object { $_ })) {
+        if ($hostsIds -notcontains $h) { Add-Failure "${where}: unknown hosts group '$h'." }
+        if ($manualHosts -contains $h) { Add-Failure "${where}: hosts group '$h' is ManualOnly; no mode may tick it." }
+    }
+    if ($def.Startup -and -not $script:StartupModes.Contains($def.Startup)) { Add-Failure "${where}: unknown startup mode '$($def.Startup)'." }
+    if ($def.Values) {
+        foreach ($name in $def.Values.Keys) {
+            $policy = $script:PolicyByName[$name]
+            if (-not $policy -or -not $policy.Choices) { Add-Failure "${where}: Values names '$name', which is not a choice policy." }
+            elseif (@($policy.Choices.Values) -notcontains $def.Values[$name]) { Add-Failure "${where}: '$($def.Values[$name])' is not one of the Choices of '$name'." }
+        }
+    }
+    foreach ($inc in @($def.Include | Where-Object { $_ })) { if (-not $script:PresetDefinitions.ContainsKey($inc)) { Add-Failure "${where}: Include names unknown mode '$inc'." } }
+}
+foreach ($old in $script:LegacyPresetIds.Keys) {
+    $target = $script:LegacyPresetIds[$old]
+    if ($script:PresetOrder -notcontains $target) { Add-Failure "tweaks\presets.psd1: LegacyIds maps '$old' onto unknown mode '$target'." }
+    # Max wipes data on exit; an old config must never land there silently.
+    if ($target -eq 'Max') { Add-Failure "tweaks\presets.psd1: LegacyIds must not map '$old' onto Max." }
 }
 
 # Include cycles would make the preset resolver recurse forever.
@@ -167,11 +220,11 @@ foreach ($id in $script:PresetDefinitions.Keys) {
     if ($cycle) { Add-Failure "tweaks\presets.psd1: Include cycle $cycle."; $cycleFound = $true; break }
 }
 
-# Resolving every preset exercises the same code the mode buttons run.
+# Resolving every mode exercises the same code the mode cards run.
 if (-not $cycleFound) {
     foreach ($id in $script:PresetDefinitions.Keys) {
         $payload = Get-PresetPayload -Preset $id
-        if ($id -ne 'None' -and @($payload.Policies).Count -eq 0) { Add-Failure "Preset '$id' resolves to no policies." }
+        if (-not $payload.Reset -and @($payload.Policies).Count -eq 0) { Add-Failure "Mode '$id' resolves to no policies." }
     }
 }
 
@@ -181,4 +234,4 @@ if ($script:failures) {
     $script:failures | ForEach-Object { Write-Output "  - $_" }
     exit 1
 }
-Write-Output "Tweak data OK: $policyCount policies in $($script:Policies.Count) tabs, $($script:ScheduledTasks.Count) tasks, $($script:Services.Count) services, $($script:HostsBlocks.Count) hosts groups, $($script:PresetDefinitions.Count) presets."
+Write-Output "Tweak data OK: $policyCount policies in $($script:Policies.Count) tabs, $($script:Flags.Count) flags, $($script:RetiredPolicies.Count) retired, $($script:ScheduledTasks.Count) tasks, $($script:Services.Count) services, $($script:HostsBlocks.Count) hosts groups, $($script:PresetDefinitions.Count) modes."

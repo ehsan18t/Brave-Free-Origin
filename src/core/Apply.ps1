@@ -83,7 +83,8 @@ function Remove-LegacyPolicyKeys {
 function Invoke-Apply {
     param($Selection, [bool]$WriteFlags = $true)
 
-    if ($Selection.Backup) { [void](Export-Backup) }
+    # A failed backup stops the apply: nothing is written that could not be undone.
+    if ($Selection.Backup) { [void](New-BfoBackup -Kind auto -Reason 'apply') }
 
     $path = $script:PolicyPath
     $applied = 0
@@ -174,7 +175,7 @@ function Invoke-Apply {
 function Invoke-FullRestore {
     param([bool]$Backup)
 
-    if ($Backup) { [void](Export-Backup) }
+    if ($Backup) { [void](New-BfoBackup -Kind auto -Reason 'fullRestore') }
 
     $path = $script:PolicyPath
     try {

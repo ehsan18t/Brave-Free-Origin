@@ -145,12 +145,15 @@ function Get-BfoMachineState {
 # ---- Config file --------------------------------------------------------------
 # schemaVersion tracks the config format, appVersion tracks the app. They move
 # independently: gaining a button must not force a config migration. The
-# importer (src\ui\Actions.ps1) still reads schema 1 and 2 files.
+# importer (src\ui\Actions.ps1) still reads schema 1 to 3 files.
+# Schema 4 is the full export for moving to another PC: App holds the app's
+# own preferences (language, theme, backup) and ScriptletRules the raw text of
+# the scriptlet rules this app disabled.
 function ConvertTo-BfoConfig {
-    param($Selection, [string]$AppVersion)
+    param($Selection, [string]$AppVersion, $App, [string[]]$ScriptletRules)
     $o = $Selection.Overrides
     $cfg = [ordered]@{
-        schemaVersion = 3
+        schemaVersion = 4
         appVersion    = $AppVersion
         exported      = (Get-Date -Format 's')
         profile       = $Selection.Profile
@@ -175,5 +178,7 @@ function ConvertTo-BfoConfig {
     foreach ($t in $Selection.Tasks)    { $cfg.tasks[$t.Name]    = [bool]$t.Checked }
     foreach ($s in $Selection.Services) { $cfg.services[$s.Name] = [bool]$s.Checked }
     foreach ($h in $Selection.Hosts)    { $cfg.hosts[$h.Id]      = [bool]$h.Checked }
+    if ($App) { $cfg['app'] = [ordered]@{ language = "$($App.Language)"; theme = "$($App.Theme)"; backup = [bool]$App.Backup } }
+    $cfg['scriptlets'] = [ordered]@{ disabledRules = [string[]]@($ScriptletRules | Where-Object { $_ }) }
     return $cfg
 }

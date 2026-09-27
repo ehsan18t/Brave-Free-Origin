@@ -74,7 +74,9 @@ function Test-BraveInstalled {
 function Get-BraveVersion {
     $exe = Test-BraveInstalled
     if ($exe) {
-        try { return (Get-Item $exe).VersionInfo.FileVersion } catch { return 'unknown' }
+        try { $version = (Get-Item $exe).VersionInfo.FileVersion } catch { $version = $null }
+        if ($version) { return $version }
+        return 'unknown'
     }
     return 'not installed'
 }

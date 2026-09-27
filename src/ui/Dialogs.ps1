@@ -188,11 +188,15 @@ function Show-TextReport {
         [string]$Title,
         [string]$Text,
         [string]$DefaultFileName = 'brave-free-origin-report.txt',
-        $Summary
+        $Summary,
+        # Optional @{ Id; Text }: an accent button that closes the report and
+        # makes this function return its Id (Import uses it for Apply everything).
+        [hashtable]$PrimaryAction
     )
     $script:ReportText = $Text
     $script:ReportFileName = $DefaultFileName
-    [void](Show-BfoDialog -Title $Title -Message $Text -Icon None -Report -Summary $Summary -Buttons @(
+    $closeStyle = if ($PrimaryAction) { $null } else { 'Accent' }
+    $buttons = @(
         @{ Id = 'copy'; Text = (T 'report.copy'); Action = {
             # Clipboard.SetText throws on an empty string, and when another
             # program holds the clipboard.
@@ -209,8 +213,10 @@ function Show-TextReport {
                 Write-BfoLog "Report saved: $file" 'OK'
             }
         } }
-        @{ Id = 'close'; Text = (T 'report.close'); Style = 'Accent'; IsDefault = $true; IsCancel = $true }
-    ))
+        @{ Id = 'close'; Text = (T 'report.close'); Style = $closeStyle; IsDefault = (-not $PrimaryAction); IsCancel = $true }
+    )
+    if ($PrimaryAction) { $buttons += @{ Id = $PrimaryAction.Id; Text = $PrimaryAction.Text; Style = 'Accent'; IsDefault = $true } }
+    return (Show-BfoDialog -Title $Title -Message $Text -Icon None -Report -Summary $Summary -Buttons $buttons)
 }
 
 # ---- Toasts ------------------------------------------------------------------------

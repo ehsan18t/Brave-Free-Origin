@@ -7,16 +7,6 @@ $script:HostsSentinelStart = '# === Brave-Free-Origin START - managed block, do 
 $script:HostsSentinelEnd   = '# === Brave-Free-Origin END ==='
 $script:HostsFile = "$env:WINDIR\System32\drivers\etc\hosts"
 
-# ---- Hosts file helpers (v1.5) ----------------------------------------------
-function Backup-HostsFile {
-    if (-not (Test-Path $script:HostsFile)) { return $null }
-    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $file = Join-Path (Get-BackupDir -Create) "hosts-backup-$stamp.bak"
-    Copy-Item $script:HostsFile $file -Force
-    Write-BfoLog "Hosts backup saved: $file" 'OK'
-    return $file
-}
-
 # Splits the hosts file into the lines this app does not own (Kept) and the
 # domains inside its sentinel block (Domains).
 function Read-HostsFile {
@@ -40,8 +30,6 @@ function Get-HostsCurrentDomains {
 
 function Set-HostsBlockDomains {
     param([string[]]$Domains)
-    [void](Backup-HostsFile)
-
     # Everything outside our existing sentinel block (if any) is kept as is.
     $kept = (Read-HostsFile).Kept
 

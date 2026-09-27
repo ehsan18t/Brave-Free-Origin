@@ -362,12 +362,35 @@ function Import-ScriptletPreferencesAndReapply {
     if (-not (Test-Path $PrefsFile)) { throw "Preference file not found: $PrefsFile" }
     $prefs = Get-Content $PrefsFile -Raw | ConvertFrom-Json
     if (-not $prefs.disabledRules) { throw 'Preference file has no disabledRules array.' }
+    return (Invoke-ScriptletRulesReapply -Rules ([string[]]@($prefs.disabledRules | ForEach-Object { "$($_.rule)" })) -Root $Root)
+}
 
-    $wanted = @{}
-    foreach ($entry in $prefs.disabledRules) {
-        if ($entry.rule) { $wanted["$($entry.rule)"] = $true }
+# The raw text of every rule this app has disabled in Brave's filter lists,
+# for the full export. A quick pass over the lists: no scan of the page needed.
+# Empty when the folder has no lists yet.
+function Get-ScriptletDisabledRuleTexts {
+    param([string]$Root)
+    if ([string]::IsNullOrWhiteSpace($Root) -or -not (Test-Path $Root)) { return @() }
+    $rules = @()
+    foreach ($file in @(Get-ScriptletListFiles -Root $Root)) {
+        foreach ($line in [System.IO.File]::ReadAllLines($file.FullName)) {
+            $rule = Get-BfoDisabledScriptletRule -Line $line
+            if ($rule) { $rules += $rule }
+        }
     }
+    return @($rules | Sort-Object -Unique)
+}
+
+# Disables every active rule whose raw text is in Rules, in every list under
+# Root. Returns how many lines it disabled; -1 when Root has no filter lists
+# yet (Brave has not downloaded them), so the caller can keep the rules waiting.
+function Invoke-ScriptletRulesReapply {
+    param([string[]]$Rules, [string]$Root)
+    $wanted = @{}
+    foreach ($rule in @($Rules)) { if ($rule) { $wanted["$rule"] = $true } }
     if ($wanted.Count -eq 0) { return 0 }
+    if ([string]::IsNullOrWhiteSpace($Root) -or -not (Test-Path $Root)) { return -1 }
+    if (@(Get-ScriptletListFiles -Root $Root).Count -eq 0) { return -1 }
 
     $changed = 0
     foreach ($file in (Get-ScriptletListFiles -Root $Root)) {

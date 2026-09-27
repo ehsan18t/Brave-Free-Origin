@@ -1,5 +1,5 @@
 # ============================================================================
-#  Registry policy reads, writes and .reg backups.
+#  Registry policy reads and writes. Backups are in core\Backup.ps1.
 #  Dot-sourced by Brave-Free-Origin.ps1; see the load order there.
 # ============================================================================
 
@@ -81,20 +81,6 @@ function Write-DesiredValues {
     param([string]$Path, [System.Collections.IDictionary]$Desired)
     foreach ($name in $Desired.Keys) {
         Set-PolicyValue -Path $Path -Name $name -Type $Desired[$name].Type -Value $Desired[$name].Value
-    }
-}
-
-function Export-Backup {
-    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $file = Join-Path (Get-BackupDir -Create) "brave-policies-backup-$stamp.reg"
-    $regKey = 'HKLM\Software\Policies\BraveSoftware'
-    & reg.exe EXPORT $regKey $file /y 2>&1 | Out-Null
-    if ($LASTEXITCODE -eq 0) {
-        Write-BfoLog "Backup saved: $file" 'OK'
-        return $file
-    } else {
-        Write-BfoLog "Backup skipped (no existing policies)." 'INFO'
-        return $null
     }
 }
 

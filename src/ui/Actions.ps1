@@ -140,17 +140,76 @@ $ui.BtnShowChanges.Add_Click({ Show-BfoPage 'changes' })
 # ---- Preview, apply, verify ------------------------------------------------------------
 # One plan, two views: the plain-language summary (src\ui\Summary.ps1) and the
 # technical report, both built from the same Get-ApplyPlan result.
+# After an import (-Import), the preview also offers Apply everything, which
+# writes policies, flags, hosts and waiting scriptlet rules in one go.
 function Invoke-BfoPreview {
+    param([switch]$Import)
     $snapshot = Get-SelectionSnapshot
-    Start-BfoJob -Name 'Preview' -BusyKey 'busy.preview' -Argument $snapshot -Tag $snapshot -Script {
+    Start-BfoJob -Name 'Preview' -BusyKey 'busy.preview' -Argument $snapshot `
+        -Tag ([pscustomobject]@{ Snapshot = $snapshot; Import = [bool]$Import }) -Script {
         param($In)
         $plan = Get-ApplyPlan -Selection $In
         [pscustomobject]@{ Plan = $plan; Report = (Format-ApplyPlanReport -Selection $In -Plan $plan) }
     } -OnSuccess {
         param($Result, $Job)
-        $summary = Get-PlanSummary -Plan $Result.Plan -Selection $Job.Tag
-        Show-TextReport -Title (T 'report.previewTitle') -Text $Result.Report -Summary $summary `
+        $summary = Get-PlanSummary -Plan $Result.Plan -Selection $Job.Tag.Snapshot
+        $primary = if ($Job.Tag.Import) { @{ Id = 'applyAll'; Text = (T 'import.applyAll') } } else { $null }
+        $choice = Show-TextReport -Title (T 'report.previewTitle') -Text $Result.Report -Summary $summary -PrimaryAction $primary `
             -DefaultFileName "brave-free-origin-apply-preview-$(Get-Date -Format 'yyyyMMdd-HHmmss').txt"
+        if ($choice -eq 'applyAll') { Invoke-BfoApplyEverything }
+    }
+}
+
+# The flags question Apply asks: $true to write flags, $false to skip them
+# because Brave is running, $null when the user cancelled.
+function Get-BfoFlagsDecision {
+    param([bool]$FlagsPending)
+    if (-not $FlagsPending) { return $true }
+    $running = @(Get-FlagChannels | Where-Object { @(Get-ChannelProcesses $_).Count -gt 0 })
+    if ($running.Count -eq 0) { return $true }
+    if (-not (Show-BfoMessage 'msg.flags.braveRunning' @(($running -join ', ')) -TitleKey 'msg.title.flags' -Icon Warning -YesNo)) { return $null }
+    return $false
+}
+
+# Import's one step: one backup, then everything the file holds written at
+# once. Policies, flags and the Search & Startup values go through Apply, the
+# hosts block is written to match the ticked groups, and scriptlet rules
+# waiting from the import are re-applied when Brave's filter lists exist.
+function Invoke-BfoApplyEverything {
+    $pending = Get-PendingCounts
+    $writeFlags = Get-BfoFlagsDecision -FlagsPending ($pending.Flags -gt 0)
+    if ($null -eq $writeFlags) { return }
+    $selection = Get-SelectionSnapshot
+    $backup = [bool]$selection.Backup
+    $selection.Backup = $false
+    $script:ApplyLabel = [string]$script:Vm.ModeName
+    $script:ApplyState = Get-SelectionState
+    $root = if ($script:Vm.ScriptletRoot) { [string]$script:Vm.ScriptletRoot } else { $null }
+    Start-BfoJob -Name 'Apply everything' -BusyKey 'busy.applying' -Argument ([pscustomobject]@{
+        Selection = $selection; WriteFlags = $writeFlags; Backup = $backup
+        Domains = [string[]]@(Get-SelectionHostsDomains -Selection $selection)
+        Rules = [string[]]@($script:PendingScriptletRules); Root = $root
+    }) -Script {
+        param($In)
+        if ($In.Backup) { [void](New-BfoBackup -Kind auto -Reason 'import') }
+        $apply = Invoke-Apply -Selection $In.Selection -WriteFlags $In.WriteFlags
+        Set-HostsBlockDomains -Domains $In.Domains
+        try { Save-AppliedHosts -Domains $In.Domains } catch { Write-BfoLog "Could not record the hosts block: $_" 'WARN' }
+        $scriptlets = 0
+        if (@($In.Rules).Count -gt 0) {
+            $root = if ($In.Root) { $In.Root } else { Get-ScriptletDefaultRoot }
+            try { $scriptlets = Invoke-ScriptletRulesReapply -Rules $In.Rules -Root $root }
+            catch { Write-BfoLog "Scriptlet rules not re-applied: $_" 'WARN'; $scriptlets = -1 }
+        }
+        [pscustomobject]@{ Apply = $apply; Scriptlets = $scriptlets }
+    } -OnSuccess {
+        param($Result)
+        Set-Baseline -Scope All -State $script:ApplyState
+        if ($Result.Scriptlets -ge 0) { Set-PendingScriptletRules @() }
+        Update-SelectionSummary
+        $message = if ($Result.Scriptlets -lt 0) { T 'import.doneWaiting' @(@($script:PendingScriptletRules).Count) } else { T 'import.doneText' }
+        Show-BfoToast -Severity Success -Title (T 'toast.applied' @($script:ApplyLabel)) -Message $message
+        Invoke-BfoDriftCheck
     }
 }
 
@@ -158,14 +217,8 @@ function Invoke-BfoPreview {
 # changes are pending and a channel is running, ask before applying: the rest
 # can go ahead now and the flags on the next Apply.
 function Invoke-BfoApply {
-    $writeFlags = $true
-    if ((Get-PendingCounts).Flags -gt 0) {
-        $running = @(Get-FlagChannels | Where-Object { @(Get-ChannelProcesses $_).Count -gt 0 })
-        if ($running.Count -gt 0) {
-            if (-not (Show-BfoMessage 'msg.flags.braveRunning' @(($running -join ', ')) -TitleKey 'msg.title.flags' -Icon Warning -YesNo)) { return }
-            $writeFlags = $false
-        }
-    }
+    $writeFlags = Get-BfoFlagsDecision -FlagsPending ((Get-PendingCounts).Flags -gt 0)
+    if ($null -eq $writeFlags) { return }
     $script:ApplyLabel = [string]$script:Vm.ModeName
     $script:ApplyState = Get-SelectionState
     $script:ApplyBaselineBefore = $script:Baseline.Clone()
@@ -248,8 +301,10 @@ function Invoke-BfoDriftAction {
     if (@($Items).Count -eq 0) { return }
     $script:DriftAction = $Action
     Start-BfoJob -Name "Drift $Action" -BusyKey 'busy.applying' `
-        -Argument ([pscustomobject]@{ Action = $Action; Items = @($Items) }) -Script {
+        -Argument ([pscustomobject]@{ Action = $Action; Items = @($Items); Backup = [bool]$script:Vm.Backup }) -Script {
         param($In)
+        # Accept only edits the record; the other two write to this PC.
+        if ($In.Backup -and $In.Action -ne 'Accept') { [void](New-BfoBackup -Kind auto -Reason 'drift') }
         switch ($In.Action) {
             'Reapply' { , @(Invoke-DriftReapply -Items $In.Items) }
             'Cleanup' { , @(Invoke-DriftCleanup -Items $In.Items) }
@@ -313,15 +368,68 @@ function Resolve-ConfigId {
     return $null
 }
 
+# Export everything: the selection, the app's own preferences and the
+# scriptlet rules this app disabled, in one file for another PC. Finding the
+# disabled rules reads Brave's filter lists, so it runs in the background.
 $ui.BtnExport.Add_Click({
-    $file = Show-SaveDialog -FilterKey 'dialog.filter.config' -Extension 'json' -FileName "brave-free-origin-config-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
+    $file = Show-SaveDialog -FilterKey 'dialog.filter.config' -Extension 'json' -FileName "brave-free-origin-export-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
     if (-not $file) { return }
-    $config = ConvertTo-BfoConfig -Selection (Get-SelectionSnapshot) -AppVersion $script:AppVersion
-    $config | ConvertTo-Json -Depth 5 | Set-Content -Path $file -Encoding UTF8
-    Write-BfoLog "Config exported: $file" 'OK'
-    Show-BfoToast -Severity Success -Title (T 'toast.exported') -Message $file
+    $vm = $script:Vm
+    $app = [pscustomobject]@{ Language = $script:CurrentLocale; Theme = (Get-ChoiceId $vm.ThemeItems $vm.ThemeIndex); Backup = [bool]$vm.Backup }
+    $root = if ($vm.ScriptletRoot) { [string]$vm.ScriptletRoot } else { $null }
+    Start-BfoJob -Name 'Export' -BusyKey 'busy.exporting' -Argument ([pscustomobject]@{
+        File = $file; Selection = (Get-SelectionSnapshot); App = $app; Root = $root; Pending = [string[]]@($script:PendingScriptletRules)
+    }) -Script {
+        param($In)
+        $root = if ($In.Root) { $In.Root } else { Get-ScriptletDefaultRoot }
+        $rules = @()
+        try { $rules = @(Get-ScriptletDisabledRuleTexts -Root $root) } catch { Write-BfoLog "Scriptlet rules not exported: $_" 'WARN' }
+        # Rules still waiting from an earlier import travel on too.
+        $rules = [string[]]@(@($rules) + @($In.Pending) | Where-Object { $_ } | Select-Object -Unique)
+        $config = ConvertTo-BfoConfig -Selection $In.Selection -AppVersion $script:AppVersion -App $In.App -ScriptletRules $rules
+        $json = $config | ConvertTo-Json -Depth 6
+        [System.IO.File]::WriteAllText($In.File, $json, (New-Object System.Text.UTF8Encoding($false)))
+        Write-BfoLog "Exported to $($In.File) ($($rules.Count) scriptlet rule(s))." 'OK'
+        $In.File
+    } -OnSuccess {
+        param($Written)
+        Show-BfoToast -Severity Success -Title (T 'toast.exported') -Message $Written
+    }
 })
 
+# The app's own preferences from an export: language and theme change right
+# away, like picking them in Settings, and the backup switch is remembered.
+function Import-BfoAppSettings {
+    param($App)
+    if (-not $App) { return }
+    $vm = $script:Vm
+    $code = "$($App.language)"
+    if ($code -and $code -ne $script:CurrentLocale -and (Get-ChoiceIndex $vm.LanguageItems $code) -ge 0) {
+        $vm.LanguageIndex = Get-ChoiceIndex $vm.LanguageItems $code
+        Switch-BfoLanguage $code
+    }
+    $theme = "$($App.theme)"
+    if ($theme -and $script:ThemeModes -contains $theme) {
+        $vm.ThemeIndex = Get-ChoiceIndex $vm.ThemeItems $theme
+        Set-BfoTheme -Mode $theme
+        Save-BfoSetting 'theme' $theme
+    }
+    if ($null -ne $App.backup) {
+        $vm.Backup = [bool]$App.backup
+        Save-BfoSetting 'backup' ([bool]$App.backup)
+    }
+}
+
+# Rules waiting to be re-applied, remembered across restarts.
+function Set-PendingScriptletRules {
+    param([string[]]$Rules)
+    $script:PendingScriptletRules = [string[]]@($Rules | Where-Object { $_ } | Select-Object -Unique)
+    Save-BfoSetting 'pendingScriptletRules' $script:PendingScriptletRules
+    Update-ScriptletPendingText
+}
+
+# Import: loads everything the file holds, then opens the preview with Apply
+# everything. Nothing is written to Brave until that button (or Apply).
 $ui.BtnImport.Add_Click({
     if (Test-BfoBusy) { return }
     $file = Show-OpenDialog -FilterKey 'dialog.filter.config' -Extension 'json' -InitialDirectory (Get-BackupDir)
@@ -332,11 +440,93 @@ $ui.BtnImport.Add_Click({
         Show-BfoMessage 'msg.config.badJson' @("$_") -TitleKey 'msg.title.importError' -Icon Error
         return
     }
+    Import-BfoAppSettings $cfg.app
     Import-BfoConfig $cfg
+    if ($cfg.scriptlets -and @($cfg.scriptlets.disabledRules).Count -gt 0) {
+        Set-PendingScriptletRules ([string[]]@(@($script:PendingScriptletRules) + @($cfg.scriptlets.disabledRules)))
+    }
     $schema = if ($cfg.schemaVersion) { $cfg.schemaVersion } else { 1 }
-    Write-BfoLog "Config imported from $file (schema $schema, app $($cfg.appVersion)$(if (-not $cfg.appVersion) { $cfg.version }))" 'OK'
-    Show-BfoToast -Severity Success -Title (T 'msg.title.imported') -Message (T 'msg.config.imported')
+    Write-BfoLog "Imported from $file (schema $schema, app $($cfg.appVersion)$(if (-not $cfg.appVersion) { $cfg.version }))" 'OK'
+    Invoke-BfoPreview -Import
 })
+
+$ui.BtnScriptletPending.Add_Click({
+    $root = if ($script:Vm.ScriptletRoot) { [string]$script:Vm.ScriptletRoot } else { $null }
+    Start-BfoJob -Name 'Scriptlet rules' -BusyKey 'busy.scriptlets' `
+        -Argument ([pscustomobject]@{ Rules = [string[]]@($script:PendingScriptletRules); Root = $root }) -Script {
+        param($In)
+        $root = if ($In.Root) { $In.Root } else { Get-ScriptletDefaultRoot }
+        Invoke-ScriptletRulesReapply -Rules $In.Rules -Root $root
+    } -OnSuccess {
+        param($Changed)
+        if ($Changed -lt 0) {
+            Show-BfoToast -Severity Warning -Title (T 'msg.title.scriptlet') -Message (T 'scriptlet.pendingNoLists')
+            return
+        }
+        Set-PendingScriptletRules @()
+        Show-BfoToast -Severity Success -Title (T 'msg.title.scriptlet') -Message (T 'scriptlet.pendingDone' @($Changed))
+    }
+})
+
+# ---- Backups -------------------------------------------------------------------------------
+$ui.BtnBackupNow.Add_Click({
+    Start-BfoJob -Name 'Back up now' -BusyKey 'busy.backup' -Script { New-BfoBackup -Kind manual -Reason 'manual' } -OnSuccess {
+        Update-BackupList
+        Show-BfoToast -Severity Success -Title (T 'backups.doneTitle') -Message (T 'backups.doneText')
+    }
+})
+
+# Restore asks first, and asks about flags when Brave is running, like Apply.
+function Invoke-BfoRestoreBackup {
+    param($Row)
+    if (-not (Show-BfoMessage 'msg.backup.confirmRestore' @($Row.Title) -TitleKey 'msg.title.backup' -Icon Warning -YesNo -Danger)) { return }
+    $running = @()
+    try { $running = @(Get-BackupRunningChannels -Id $Row.Id) } catch { Write-BfoLog "$_" 'WARN' }
+    $writeFlags = $true
+    if ($running.Count -gt 0) {
+        if (-not (Show-BfoMessage 'msg.flags.braveRunning' @(($running -join ', ')) -TitleKey 'msg.title.flags' -Icon Warning -YesNo)) { return }
+        $writeFlags = $false
+    }
+    Start-BfoJob -Name 'Restore backup' -BusyKey 'busy.restoring' `
+        -Argument ([pscustomobject]@{ Id = $Row.Id; WriteFlags = $writeFlags }) -Script {
+        param($In)
+        Restore-BfoBackup -Id $In.Id -WriteFlags $In.WriteFlags
+    } -OnSuccess {
+        param($Result)
+        Update-BackupList
+        $message = if (@($Result.FlagsSkipped).Count -gt 0) { T 'backups.restoredNoFlags' @((@($Result.FlagsSkipped) -join ', ')) } else { T 'backups.restoredText' }
+        Show-BfoToast -Severity Success -Title (T 'backups.restoredTitle') -Message $message
+        Invoke-BfoLoadState -Quiet
+        Invoke-BfoDriftCheck
+    }
+}
+
+# One handler for every button in the list: the button's Tag is the action,
+# its DataContext the backup row.
+$ui.BackupList.AddHandler([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent, [System.Windows.RoutedEventHandler]{
+    $e = $_
+    $button = $e.OriginalSource
+    if ($button -isnot [System.Windows.Controls.Button] -or $button.DataContext -isnot [System.Dynamic.ExpandoObject]) { return }
+    $row = $button.DataContext
+    $e.Handled = $true
+    try {
+        switch ("$($button.Tag)") {
+            'restore' { Invoke-BfoRestoreBackup $row }
+            'pin'     { Set-BfoBackupPinned -Id $row.Id -Pinned (-not $row.Pinned); Update-BackupList }
+            'delete'  {
+                if (Show-BfoMessage 'msg.backup.confirmDelete' @($row.Title) -TitleKey 'msg.title.backup' -Icon Warning -YesNo -Danger) {
+                    Remove-BfoBackup -Id $row.Id
+                    Update-BackupList
+                }
+            }
+        }
+    } catch {
+        Write-BfoLog "Backup action failed: $_" 'ERR'
+        Show-BfoToast -Severity Error -Title (T 'msg.title.error') -Message (T 'msg.failed' @("$_"))
+    }
+})
+
+$ui.ChkBackup.Add_Click({ Save-BfoSetting 'backup' ([bool]$script:Vm.Backup) })
 
 # Sections and names the file omits are left as they are. A policy saved under
 # an old name (LegacyNames in tweaks\policies) lands on the row that replaced
@@ -461,12 +651,14 @@ $ui.BtnHostsApply.Add_Click({
     if (-not $confirmed) { return }
     $script:HostsApplyCount = $domains.Count
     $script:HostsApplyState = Get-SelectionState
-    Start-BfoJob -Name 'Hosts apply' -BusyKey 'busy.hosts' -Argument ([string[]]$domains) `
+    Start-BfoJob -Name 'Hosts apply' -BusyKey 'busy.hosts' `
+        -Argument ([pscustomobject]@{ Domains = [string[]]$domains; Backup = [bool]$script:Vm.Backup }) `
         -Script {
             param($In)
-            Set-HostsBlockDomains -Domains $In
+            if ($In.Backup) { [void](New-BfoBackup -Kind auto -Reason 'hosts') }
+            Set-HostsBlockDomains -Domains $In.Domains
             # The drift check watches the blocked domains from now on.
-            try { Save-AppliedHosts -Domains $In } catch { Write-BfoLog "Could not record the hosts block: $_" 'WARN' }
+            try { Save-AppliedHosts -Domains $In.Domains } catch { Write-BfoLog "Could not record the hosts block: $_" 'WARN' }
         } -OnSuccess {
         Set-Baseline -Scope Hosts -State $script:HostsApplyState
         Update-SelectionSummary
@@ -476,7 +668,9 @@ $ui.BtnHostsApply.Add_Click({
 
 $ui.BtnHostsRemove.Add_Click({
     if (-not (Show-BfoMessage 'msg.hosts.confirmRemove' -TitleKey 'msg.title.hosts' -Icon Warning -YesNo -Danger)) { return }
-    Start-BfoJob -Name 'Hosts remove' -BusyKey 'busy.hosts' -Script {
+    Start-BfoJob -Name 'Hosts remove' -BusyKey 'busy.hosts' -Argument ([pscustomobject]@{ Backup = [bool]$script:Vm.Backup }) -Script {
+        param($In)
+        if ($In.Backup) { [void](New-BfoBackup -Kind auto -Reason 'hosts') }
         Clear-HostsBlock
         try { Save-AppliedHosts -Domains @() } catch { Write-BfoLog "Could not record the hosts block: $_" 'WARN' }
     } -OnSuccess {

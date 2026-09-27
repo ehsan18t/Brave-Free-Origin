@@ -128,7 +128,7 @@ A new interface, every setting checked against Brave's source code, new modes, b
 - **New settings.** Local AI, Email Aliases and PSST (the three Brave Origin disables that were missing), `PromotionsEnabled`, WebRTC IP handling, eight site permission defaults, and a new History and Site Data page (never save history, session-only cookies, wipe data on exit).
 - **New modes.** Default, Origin, Recommended, Strict and Max replace the seven old modes. Old config files still import: Stock becomes Default, Quick Debloat becomes Origin, Privacy + Boost becomes Recommended, and Max Performance and Max Privacy become Strict. An old config never lands on Max, because Max wipes data.
 - **Every Brave channel shares one policy key.** Brave reads `HKLM\Software\Policies\BraveSoftware\Brave` for Stable, Beta, Nightly and Dev alike, so the channel picker is gone. The `Brave-Beta`, `Brave-Nightly` and `Brave-Dev` keys earlier versions wrote were never read by Brave; Apply removes them.
-- **Flags page.** Nine brave://flags entries that do something useful and have been in Brave for at least a year (since 1.85 or earlier). They are written to each installed channel's Local State, only while that channel is closed, with a backup first.
+- **Flags page.** Nine brave://flags entries that do something useful and have been in Brave for at least a year (since 1.85 or earlier). They are written to each installed channel's Local State, only while that channel is closed, with a backup first. Flags other than these nine, and everything else in Local State, are left untouched.
 - **Warnings when settings stop being in effect.** Apply records what it set in `%ProgramData%\Brave-Free-Origin\applied.json`. When the app opens, a warning on Home lists anything reverted, anything that keeps coming back after a re-apply, and anything the installed Brave no longer supports, with Re-apply, Clean up and Keep as is.
 - **Brave's default on every setting.** Each card says whether ticking it changes Brave's default or only locks it. Settings the installed Brave does not support yet are greyed out with the version they need.
 - **One place for startup settings.** Startup, homepage and new tab settings are only on the Search & Startup page, which gained a Homepage section.
@@ -137,6 +137,13 @@ A new interface, every setting checked against Brave's source code, new modes, b
 - **Easier to find your way.** A back arrow at the top left walks back through the pages you visited, including search results with their query, and `Alt+Left` and the mouse's back button do the same. The bottom bar only slides up while something is pending or running, with a new **Discard** button, and the Activity log button moved next to the back arrow. The sidebar scroll bar no longer covers the page counts.
 - **Custom remembers where it started.** A selection changed after picking a mode reads "Custom: Origin + 3 changes" everywhere (Home, the bar, the preview, reports and exported configs), with Show changes and Reset to Origin on Home. Undoing the edits makes it plain Origin again. On startup the app names this PC's mode the same way. Only policy switches, their values, flags and Max's startup setting count as changes; the System page, hosts groups and search picks do not.
 - **English only for now.** The Simplified Chinese translation was removed; the translation system stays for new languages.
+
+#### Backups and moving to another PC
+
+- **Full backups.** A backup is a snapshot of everything the app can change: the whole Brave policy key, the hosts block, each channel's brave://flags, the update tasks and services, and the record of the last apply. One is taken automatically before every change (Apply, Re-apply, the hosts buttons, Full restore, an import and a restore), and **Back up now** in Settings takes one whenever you like.
+- **Restore in one click.** Settings > Backups lists every backup with its date, what triggered it and what it holds. **Restore** puts this PC back exactly as it was then, including policies this app does not know about, and takes a fresh backup first so a restore can itself be undone. Flags are only restored for channels that are closed.
+- **Old backups clean themselves up.** The newest 20 automatic backups are kept. Pinned backups and the ones you made with Back up now are never removed.
+- **Export everything, import everything.** **Export everything** saves one file with your whole selection, the app's own settings (language, theme and automatic backups) and the scriptlet rules you disabled. **Import** on the new PC loads it and opens the preview with an **Apply everything** button, which writes the settings, the hosts block and the scriptlet rules in one go. If Brave has not downloaded its filter lists yet, the scriptlet rules wait, and a banner on the Scriptlets page applies them once the lists are there.
 
 ### What's new in v1.12
 
@@ -339,7 +346,7 @@ source:
   a clearly-labeled sentinel block an admin can read or remove with Notepad, and
   reversible from the same tab. They are written as ASCII, the format Windows
   expects, rather than UTF-16.
-- Every destructive operation backs up first, into `Documents\Brave-Free-Origin-Backups\`.
+- Every change is preceded by a full backup, into `Documents\Brave-Free-Origin-Backups\backups\`, that Settings can restore in one click.
 - The whole thing is plain open-source PowerShell you can read end to end. `Brave-Free-Origin.ps1` lists every file it loads from `src\`, and every setting it can change is listed as plain data in `tweaks\`, which is read as data and never executed.
 
 If your AV does flag it, that flag is about "a PowerShell script is writing
@@ -514,11 +521,17 @@ The in-app `Verify` report can be copied or saved to a text file. That is useful
 
 ## Restore / Undo
 
-The app can export backups before applying changes, and v1.8 added a stronger stock restore path. v1.9 adds a separate backup/restore path for advanced scriptlet edits.
+Before every change, the app takes a full backup of everything it can change: the Brave policy key, the hosts block, each channel's flags, the update tasks and services, and the record of the last apply. Backups go to:
 
-Backups go to:
+`%USERPROFILE%\Documents\Brave-Free-Origin-Backups\backups\`
 
-`%USERPROFILE%\Documents\Brave-Free-Origin-Backups\`
+To go back to an earlier state:
+
+1. Open **Settings** and scroll to **Backups**
+2. Find the backup by its date and reason (for example "Before Apply")
+3. Click `Restore`
+
+The restore takes a backup of the current state first, so it can be undone the same way. Close Brave before restoring if you want its flags restored too; channels that are running keep their current flags. `Pin` keeps a backup from being cleaned up: the newest 20 automatic backups are kept, and pinned ones and the ones you made with `Back up now` are never removed. Automatic backups can be turned off with **Back up automatically before every change** in **Settings** > **Where changes go**.
 
 To preview a change before committing it:
 
@@ -540,11 +553,10 @@ For a lighter revert:
 2. Click `Preview changes`
 3. Click `Apply to Brave`
 
-Local State backups (made before flags are written) land in the same backup folder; to undo a flags change by hand, close Brave and copy the backup back over `Local State`.
+Or, by hand without the app:
 
-Or:
-
-1. Double-click a `.reg` backup file to restore a previous registry state
+1. Double-click `policies.reg` inside a backup folder to put the policy key back (delete `HKLM\Software\Policies\BraveSoftware\Brave` first if you want an exact copy)
+2. For flags, close Brave and copy `local-state-<channel>.json` back over that channel's `User Data\Local State`
 
 Or:
 
@@ -609,11 +621,16 @@ Backups land here:
 
 ```text
 %USERPROFILE%\Documents\Brave-Free-Origin-Backups\
-├── brave-policies-backup-YYYYMMDD-HHMMSS.reg   # registry snapshot before each apply
-├── hosts-backup-YYYYMMDD-HHMMSS.bak            # hosts snapshot before each hosts apply
-├── local-state-<channel>-YYYYMMDD-HHMMSS.json  # Local State snapshot before flags are written
-└── brave-free-origin-config-YYYYMMDD-HHMMSS.json   # exported configs
+├── backups\
+│   └── YYYYMMDD-HHMMSS-fff\             # one folder per backup, named by when it was taken
+│       ├── backup.json                  # what triggered it, whether it is pinned, and the
+│       │                                #   hosts block, flags, tasks, services and apply record
+│       ├── policies.reg                 # the whole Brave policy key (missing if there was none)
+│       └── local-state-<channel>.json   # each installed channel's Local State
+└── brave-free-origin-export-YYYYMMDD-HHMMSS.json   # Export everything (the default save folder)
 ```
+
+Backups from v1.x (`brave-policies-backup-*.reg`, `hosts-backup-*.bak` and `local-state-*.json` directly in this folder) are left where they are; the app no longer lists or removes them.
 
 UI preferences (the chosen language and theme) live separately, per user:
 
@@ -645,14 +662,15 @@ and attached to releases — it is not a tracked file in this repository.
 
 ### Exported config format
 
-`Export config` writes schema **3**:
+`Export everything` writes schema **4**:
 
 ```jsonc
 {
-  "schemaVersion": 3,          // the file format
+  "schemaVersion": 4,          // the file format
   "appVersion": "2.0",         // the app that wrote it - moves independently
-  "exported": "2026-09-25T14:03:11",
-  "profile": "Recommended",    // stable mode id, never the translated label
+  "exported": "2026-09-27T14:03:11",
+  "profile": "Custom",         // stable mode id, never the translated label
+  "baseProfile": "Recommended",  // the mode a Custom selection started from
   "policies":     { "BraveVPNDisabled": true },
   "policyValues": { "HardwareAccelerationModeEnabled": 1 },
   "flags":        { "brave-round-time-stamps": false },
@@ -662,11 +680,13 @@ and attached to releases — it is not a tracked file in this repository.
   "search":  { "enabled": false, "engineId": "brave",      "customUrl": "" },
   "ntp":     { "enabled": false, "destinationId": "blank", "customUrl": "" },
   "home":    { "enabled": false, "destinationId": "blank", "customUrl": "" },
-  "startup": { "enabled": false, "modeId": "newTab",       "urls": "" }
+  "startup": { "enabled": false, "modeId": "newTab",       "urls": "" },
+  "app":        { "language": "en-US", "theme": "system", "backup": true },
+  "scriptlets": { "disabledRules": [ "example.com##+js(some-scriptlet)" ] }
 }
 ```
 
-`schemaVersion` only changes when the *format* changes, so a normal app release does not invalidate your saved configs. Schema 3 added `flags` and `home` and dropped `channel`. Older files still import: v1.5 to v1.11 used English display text where later schemas use ids (`"Brave P3A telemetry"` instead of `"p3a"`, `"Open the new tab page"` instead of `"newTab"`, and so on), old mode ids map onto today's modes (never onto Max), and a policy saved under an old name, such as `MediaRouterEnabled`, lands on the setting that replaced it. Because nothing in the file depends on display text, a config imports identically whatever language the UI is in.
+`schemaVersion` only changes when the *format* changes, so a normal app release does not invalidate your saved configs. Schema 4 added `baseProfile`, `app` and `scriptlets`. Schema 3 added `flags` and `home` and dropped `channel`. Older files still import: v1.5 to v1.11 used English display text where later schemas use ids (`"Brave P3A telemetry"` instead of `"p3a"`, `"Open the new tab page"` instead of `"newTab"`, and so on), old mode ids map onto today's modes (never onto Max), and a policy saved under an old name, such as `MediaRouterEnabled`, lands on the setting that replaced it. Because nothing in the file depends on display text, a config imports identically whatever language the UI is in.
 
 ## Platform Compatibility
 

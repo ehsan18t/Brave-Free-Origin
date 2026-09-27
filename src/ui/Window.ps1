@@ -202,6 +202,8 @@ function Show-BfoPage {
     if ($changed -and $script:CurrentPage -and -not $NoHistory) { Add-NavHistory $script:CurrentPage }
     if ($Id -ne 'results' -and $Id -ne 'changes') { $script:LastPage = $Id }
     if ($panel -eq $script:Ui.PageList) { Set-ListPage $Id }
+    # Backups are made by jobs all over the app; the list is read fresh.
+    if ($Id -eq 'settings') { Update-BackupList }
     $script:CurrentPage = $Id
     foreach ($page in $script:Pages) { $page.Visibility = ConvertTo-Visibility ($page -eq $panel) }
 

@@ -83,6 +83,7 @@ $script:SourceFiles = @(
     'core\Presets.ps1'
     'core\Plan.ps1'
     'core\Drift.ps1'
+    'core\Backup.ps1'
     'core\Apply.ps1'
     'core\Scriptlets.ps1'
     'core\State.ps1'
@@ -171,6 +172,9 @@ if ($script:ThemeModes -contains $savedTheme) {
     $vm.ThemeIndex = Get-ChoiceIndex $vm.ThemeItems $savedTheme
     Set-BfoTheme -Mode $savedTheme
 }
+if ($null -ne $script:BfoSettings['backup']) { $vm.Backup = [bool]$script:BfoSettings['backup'] }
+# Scriptlet rules from an import that are still waiting for Brave's filter lists.
+$script:PendingScriptletRules = [string[]]@($script:BfoSettings['pendingScriptletRules'] | Where-Object { $_ })
 Update-ModelText
 Update-OverrideStates
 Set-Baseline -Scope All

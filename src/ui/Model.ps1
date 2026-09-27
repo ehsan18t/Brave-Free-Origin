@@ -99,6 +99,8 @@ $script:Vm = New-BfoObject @{
     BarTitle = ''; BarSubtitle = ''; BusyText = ''; BarButtonsVisibility = $script:Collapsed
     CanGoBack = $false
     ShowChangesText = ''; ResetToBaseText = ''; BaseActionsVisibility = $script:Collapsed
+    Backups = (New-BfoList); BackupsEmptyVisibility = $script:Collapsed
+    ScriptletPendingVisibility = $script:Collapsed; ScriptletPendingText = ''
     IsBusy = $false; IsIdle = $true; BusyVisibility = $script:Collapsed
     AlertCount = ''; AlertVisibility = $script:Collapsed
     DriftVisibility = $script:Collapsed; DriftTitle = ''; DriftText = ''; DriftItems = (New-BfoList)
@@ -359,7 +361,7 @@ $script:PresetRisk = @{ Default = 'neutral'; Origin = 'low'; Recommended = 'low'
 foreach ($preset in $script:PresetOrder) {
     $script:Vm.Presets.Add((New-BfoObject @{
         Id = $preset; Name = ''; Description = ''; Risk = ''; RiskLevel = $(if ($script:PresetRisk.ContainsKey($preset)) { $script:PresetRisk[$preset] } else { 'neutral' })
-        IsActive = $false; ActiveVisibility = $script:Collapsed; ModifiedVisibility = $script:Collapsed; ModifiedText = ''
+        IsActive = $false; ActiveVisibility = $script:Collapsed; ModifiedVisibility = $script:Collapsed; ModifiedText = ''; ModifiedTip = ''; IsModified = $false
     }))
 }
 
@@ -521,7 +523,9 @@ function Update-SelectionSummary {
         $card.ActiveVisibility = ConvertTo-Visibility $active
         $modified = ($hasBase -and $card.Id -eq $script:BaseProfile)
         $card.ModifiedVisibility = ConvertTo-Visibility $modified
+        $card.IsModified = $modified
         $card.ModifiedText = if ($modified) { [string](T 'mode.modifiedBadge' @($script:ChangeCount)) } else { '' }
+        $card.ModifiedTip = if ($modified) { [string](T 'mode.modifiedTip' @($script:ChangeCount)) } else { $null }
     }
     $vm.BaseActionsVisibility = ConvertTo-Visibility $hasBase
     if ($hasBase) {
@@ -720,6 +724,44 @@ function Update-ModelText {
         [string](T 'header.unreviewedLocale')
     } else { [string](T 'settings.languageDesc') }
     Update-DriftText
+    Update-ScriptletPendingText
+    Update-BackupList
+}
+
+# ---- Backups (Settings page) ---------------------------------------------------------------
+# Read straight from the backup folder: a few small JSON files, fast enough
+# for the UI thread. Refreshed whenever Settings opens and after every backup
+# action.
+function Update-BackupList {
+    $vm = $script:Vm
+    $vm.Backups.Clear()
+    $list = @()
+    try { $list = @(Get-BfoBackups) } catch { Write-BfoLog "Could not list backups: $_" 'WARN' }
+    foreach ($b in $list) {
+        $created = [datetime]::MinValue
+        $when = if ([datetime]::TryParse($b.Created, [ref]$created)) { $created.ToString('g') } else { $b.Created }
+        $reasonKey = "backups.reason.$($b.Reason)"
+        $reason = if ($script:EnglishStrings.ContainsKey($reasonKey)) { [string](T $reasonKey) } else { $b.Reason }
+        $kind = if ($b.Kind -eq 'manual') { [string](T 'backups.kind.manual') } else { $reason }
+        $vm.Backups.Add((New-BfoObject @{
+            Id = $b.Id; Pinned = $b.Pinned; Kind = $b.Kind
+            Title = [string](T 'backups.rowTitle' @($when, $kind))
+            Detail = [string](T 'backups.rowDetail' @($b.Policies, $b.Flags, $b.Hosts))
+            PinText = $(if ($b.Pinned) { [string](T 'backups.unpin') } else { [string](T 'backups.pin') })
+            PinVisibility = (ConvertTo-Visibility $b.Pinned); ClockVisibility = (ConvertTo-Visibility (-not $b.Pinned))
+        }))
+    }
+    $vm.BackupsEmptyVisibility = ConvertTo-Visibility ($list.Count -eq 0)
+}
+
+# ---- Scriptlet rules waiting from an import --------------------------------------------------
+# Kept in settings.json until they could be re-applied, so a restart does not
+# lose them.
+$script:PendingScriptletRules = @()
+function Update-ScriptletPendingText {
+    $count = @($script:PendingScriptletRules).Count
+    $script:Vm.ScriptletPendingVisibility = ConvertTo-Visibility ($count -gt 0)
+    $script:Vm.ScriptletPendingText = if ($count -gt 0) { [string](T 'scriptlet.pending' @($count)) } else { '' }
 }
 
 # ---- Drift banner (Home page) ------------------------------------------------------------

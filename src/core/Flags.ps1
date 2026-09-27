@@ -10,8 +10,9 @@
 #   * it is only written while that channel's Brave is closed;
 #   * only that one list is touched: the file is scanned, the list is swapped
 #     in place and every other byte is written back exactly as it was read;
-#   * a copy goes to the backup folder first, and the file is replaced in one
-#     step, so a failure leaves the original in place.
+#   * the file is replaced in one step, so a failure leaves the original in
+#     place; the full backup taken before every write (core\Backup.ps1) holds
+#     a copy of each channel's Local State.
 # Flags the app does not manage are kept as they are.
 
 $script:Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
@@ -150,13 +151,11 @@ function Write-LocalStateFlags {
     $readBack = if ($check -and $check.Found) { @(ConvertFrom-JsonStringList -Json $newText.Substring($check.Start, $check.End - $check.Start)) } else { $null }
     if ($null -eq $readBack -or ($readBack -join "`n") -ne ($entries -join "`n")) { throw "Could not update the flag list in the Local State of $Channel safely." }
 
-    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $backup = Join-Path (Get-BackupDir -Create) "local-state-$($Channel.ToLowerInvariant())-$stamp.json"
-    Copy-Item -LiteralPath $path -Destination $backup -Force
     $temp = "$path.bfo-tmp"
     [System.IO.File]::WriteAllText($temp, $newText, $script:Utf8NoBom)
-    [System.IO.File]::Replace($temp, $path, $null)
-    Write-BfoLog "Local State backup saved: $backup" 'OK'
+    # [NullString]::Value, not $null: PowerShell passes $null to a string
+    # parameter as "", which File.Replace rejects as an illegal path.
+    [System.IO.File]::Replace($temp, $path, [NullString]::Value)
     return $true
 }
 

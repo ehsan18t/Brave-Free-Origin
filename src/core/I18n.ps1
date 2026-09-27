@@ -61,7 +61,7 @@ function T {
         # Loud on purpose: a missing key should be obvious during development.
         return "!!$Key!!"
     }
-    if ($FormatArgs -and $FormatArgs.Count -gt 0) {
+    if ($null -ne $FormatArgs -and $FormatArgs.Count -gt 0) {
         try { return ($text -f $FormatArgs) } catch { return $text }
     }
     return $text

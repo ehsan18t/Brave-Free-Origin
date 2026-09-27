@@ -267,8 +267,10 @@
               <TextBlock Text="{DynamicResource mode.intro}" Style="{StaticResource SecondaryText}" Margin="2,0,0,10"/>
               <ItemsControl x:Name="PresetCards" ItemsSource="{Binding Presets}" Margin="-4,0,-4,0">
                 <ItemsControl.ItemsPanel>
+                  <!-- Rows, columns and spans are set on resize by
+                       Update-PresetLayout in src\ui\Window.ps1. -->
                   <ItemsPanelTemplate>
-                    <UniformGrid Columns="{Binding PresetColumns}"/>
+                    <Grid/>
                   </ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>

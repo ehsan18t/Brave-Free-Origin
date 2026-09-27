@@ -347,11 +347,66 @@ $ui.PresetCards.AddHandler([System.Windows.Controls.Primitives.ButtonBase]::Clic
     Invoke-BfoPreset $card.Id
 })
 
-# As many columns as fit at 210 px or more each.
-$ui.PresetCards.Add_SizeChanged({
-    $e = $_
-    $columns = [Math]::Max(2, [Math]::Min(4, [int][Math]::Floor($e.NewSize.Width / 210)))
-    if ($script:Vm.PresetColumns -ne $columns) { $script:Vm.PresetColumns = $columns }
+# The mode cards fill every row: all five in one row when each gets 200 px,
+# otherwise as few rows as fit, spread evenly with the larger rows first (three
+# over two). The panel is a Grid whose column count is the least common
+# multiple of the row sizes, so every card in a row spans the same share.
+$script:PresetPanel = $null
+function Get-ItemsHost {
+    param($Parent)
+    for ($i = 0; $i -lt [System.Windows.Media.VisualTreeHelper]::GetChildrenCount($Parent); $i++) {
+        $child = [System.Windows.Media.VisualTreeHelper]::GetChild($Parent, $i)
+        if ($child -is [System.Windows.Controls.Panel] -and $child.IsItemsHost) { return $child }
+        $found = Get-ItemsHost $child
+        if ($found) { return $found }
+    }
+    return $null
+}
+
+function Update-PresetLayout {
+    $control = $script:Ui.PresetCards
+    $count = $control.Items.Count
+    if ($count -eq 0 -or $control.ActualWidth -le 0) { return }
+    if (-not $script:PresetPanel) { $script:PresetPanel = Get-ItemsHost $control }
+    $panel = $script:PresetPanel
+    if (-not $panel) { return }
+
+    $perRow = [Math]::Min($count, [Math]::Max(1, [int][Math]::Floor($control.ActualWidth / 200)))
+    $rows = [int][Math]::Ceiling($count / $perRow)
+    $sizes = @(for ($r = 0; $r -lt $rows; $r++) { [int][Math]::Floor($count / $rows) + [int]($r -lt ($count % $rows)) })
+    $columns = 1
+    foreach ($size in $sizes) {
+        $a = $columns; $b = $size
+        while ($b -ne 0) { $a, $b = $b, ($a % $b) }
+        $columns = [int]($columns / $a * $size)
+    }
+
+    if ($panel.ColumnDefinitions.Count -ne $columns) {
+        $panel.ColumnDefinitions.Clear()
+        for ($c = 0; $c -lt $columns; $c++) { $panel.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition)) }
+    }
+    if ($panel.RowDefinitions.Count -ne $rows) {
+        $panel.RowDefinitions.Clear()
+        for ($r = 0; $r -lt $rows; $r++) {
+            $panel.RowDefinitions.Add((New-Object System.Windows.Controls.RowDefinition -Property @{ Height = [System.Windows.GridLength]::Auto }))
+        }
+    }
+    $index = 0
+    for ($r = 0; $r -lt $rows; $r++) {
+        $span = [int]($columns / $sizes[$r])
+        for ($c = 0; $c -lt $sizes[$r]; $c++) {
+            $container = $control.ItemContainerGenerator.ContainerFromIndex($index)
+            $index++
+            if (-not $container) { continue }
+            [System.Windows.Controls.Grid]::SetRow($container, $r)
+            [System.Windows.Controls.Grid]::SetColumn($container, $c * $span)
+            [System.Windows.Controls.Grid]::SetColumnSpan($container, $span)
+        }
+    }
+}
+$ui.PresetCards.Add_SizeChanged({ Update-PresetLayout })
+$ui.PresetCards.ItemContainerGenerator.Add_StatusChanged({
+    if ($script:Ui.PresetCards.ItemContainerGenerator.Status -eq 'ContainersGenerated') { Update-PresetLayout }
 })
 
 $ui.BtnReviewSelected.Add_Click({

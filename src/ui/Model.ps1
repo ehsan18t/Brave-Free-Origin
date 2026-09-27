@@ -81,7 +81,7 @@ $script:ChangeCount = 0
 
 $script:Vm = New-BfoObject @{
     VersionText = ''; BraveText = ''; ChannelChipText = ''; AboutTitle = ''; PolicyKeyText = ''
-    Presets = (New-BfoList); PresetColumns = 4
+    Presets = (New-BfoList)
     ModeName = ''; ModeDescription = ''; RiskLine = ''; PolicyStat = ''; FlagStat = ''; TaskStat = ''; ServiceStat = ''
     ListTitle = ''; ListSubtitle = ''; ListIntro = ''; ListIntroVisibility = $script:Collapsed
     SelectedOnly = $false; SelectedOnlyVisibility = $script:Collapsed; SelectButtonsVisibility = $script:Collapsed

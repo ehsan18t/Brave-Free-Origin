@@ -57,7 +57,7 @@ if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Adm
 
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
 
-$script:AppVersion = '2.1'
+$script:AppVersion = '2.0'
 
 #region Load order ------------------------------------------------------------
 # The app is split across src\ and dot-sourced here, so every file shares this

@@ -10,7 +10,7 @@
 # generate_policy_source.py), so Beta, Nightly and Dev share Stable's policies.
 $script:PolicyPath = 'HKLM:\Software\Policies\BraveSoftware\Brave'
 
-# Versions before 2.1 wrote Beta, Nightly and Dev policies under these keys.
+# Versions before 2.0 wrote Beta, Nightly and Dev policies under these keys.
 # Brave never read them; Apply and the full restore remove them.
 $script:LegacyPolicyPaths = @(
     'HKLM:\Software\Policies\BraveSoftware\Brave-Beta'

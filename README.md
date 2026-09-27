@@ -104,9 +104,24 @@ The launcher (`.bat`) is essentially one line: it runs the PowerShell script wit
 <details>
 <summary><strong>📜 Changelog (click to expand)</strong></summary>
 
-### What's new in v2.1
+### What's new in v2.0
 
-Every setting checked against the source, new modes, flags, and a warning when applied settings stop being in effect.
+A new interface, every setting checked against Brave's source code, new modes, brave://flags, and a warning when applied settings stop being in effect.
+
+#### Interface
+
+- **A native-feeling window.** The WinForms window is replaced by a WPF one modeled on Windows 11 Settings: side navigation with a live count per page and a back arrow, setting cards you click anywhere to flip, a Home page with one card per mode and a summary of your selection, and a bottom bar that slides up with Discard, Preview and Apply whenever something is not applied yet.
+- **Light and dark themes.** Follows the Windows app mode by default, title bar included on Windows 11, with Windows' default blue as the accent. Settings can pin Light or Dark.
+- **No more frozen window.** Reading the current state, Preview, Apply, Verify, Full restore, the hosts buttons and every scriptlet operation run on a background runspace. The window keeps responding, and a progress line in the bottom bar says what is running. Closing the window while something is being written asks you to close a second time.
+- **Pending changes.** The bottom bar shows how many changes are not applied yet, compared with what was last read from or written to this PC, and hides when there are none. The Hosts page does the same for hosts groups, which it writes separately.
+- **Preview in plain language.** Preview opens on a **What will happen** tab that groups the changes by what they do and warns about side effects, next to the technical report. Every setting in `tweaks\` carries tags for this (an Effect, and Impacts for side effects, see [tweaks/README.md](tweaks/README.md)); the same side effects show as small warning chips on the setting cards.
+- **Find a setting** replaces the filter bar: one grouped list of matches from every page, `Ctrl+F` to jump to it, `Esc` to clear it.
+- **A much faster scriptlet scan.** Scriptlet lines are found with compiled code instead of reading every line of every list in script, and the table is virtualized, so there is no chunked rendering any more. On a real Brave profile, 22,645 rules scan in about four seconds and the search box filters them in well under a tenth of a second. A running scan can be cancelled.
+- **Dialogs and notifications inside the window.** Confirmations and reports follow the theme instead of using system message boxes, and routine results (applied, loaded, exported) are short notifications that fade out on their own.
+- **Activity panel.** The log is a collapsible panel with colored levels. Warnings and errors show a badge until you open it.
+- **Under the hood.** `src\core` no longer touches any control: everything that reads or writes the machine takes a snapshot of the selection (documented in `src\core\State.ps1`), which is what lets it run in the background.
+
+#### Settings and modes
 
 - **Checked against the source.** Every policy was compared with Chromium 154 and brave-core 1.98. `tools\known-policies.psd1` records the verified names, and `Test-Tweaks.ps1` fails when a setting uses a name or version range that is not in it.
 - **Dead settings removed.** Settings that did nothing in Brave are gone: `WebTorrentDisabled`, `IPFSEnabled` and `ReadingListEnabled` (no longer policies), `MediaRouterEnabled` (the real name is `EnableMediaRouter`, so Cast was never actually turned off), expired Chromium policies (Cloud Print, Chrome Cleanup, the OS upgrade welcome page, Tab Organizer, `SigninAllowed`, `PromotionalTabsEnabled`), and Chromium AI and Lens policies for features Brave builds out. Apply removes these values if an earlier version wrote them.
@@ -122,21 +137,6 @@ Every setting checked against the source, new modes, flags, and a warning when a
 - **Easier to find your way.** A back arrow at the top left walks back through the pages you visited, including search results with their query, and `Alt+Left` and the mouse's back button do the same. The bottom bar only slides up while something is pending or running, with a new **Discard** button, and the Activity log button moved next to the back arrow. The sidebar scroll bar no longer covers the page counts.
 - **Custom remembers where it started.** A selection changed after picking a mode reads "Custom: Origin + 3 changes" everywhere (Home, the bar, the preview, reports and exported configs), with Show changes and Reset to Origin on Home. Undoing the edits makes it plain Origin again. On startup the app names this PC's mode the same way. Only policy switches, their values, flags and Max's startup setting count as changes; the System page, hosts groups and search picks do not.
 - **English only for now.** The Simplified Chinese translation was removed; the translation system stays for new languages.
-
-### What's new in v2.0
-
-A new interface, and the groundwork that makes it responsive.
-
-- **A native-feeling window.** The WinForms window is replaced by a WPF one modeled on Windows 11 Settings: side navigation with a live count per page, setting cards you click anywhere to flip, a Home page with one card per mode and a summary of your selection, and a bottom bar with the target channel, Preview and Apply.
-- **Light and dark themes.** Follows the Windows app mode by default, title bar included on Windows 11, with Windows' default blue as the accent. Settings can pin Light or Dark.
-- **No more frozen window.** Reading the current state, Preview, Apply, Verify, Full restore, the hosts buttons and every scriptlet operation run on a background runspace. The window keeps responding, and a progress line in the bottom bar says what is running. Closing the window while something is being written asks you to close a second time.
-- **Pending changes.** The bottom bar shows how many changes are not applied yet, compared with what was last read from or written to this PC. The Hosts page does the same for hosts groups, which it writes separately.
-- **Preview in plain language.** Preview opens on a **What will happen** tab that groups the changes by what they do and warns about side effects, next to the technical report. Every setting in `tweaks\` carries tags for this (an Effect, and Impacts for side effects, see [tweaks/README.md](tweaks/README.md)); the same side effects show as small warning chips on the setting cards.
-- **Find a setting** replaces the filter bar: one grouped list of matches from every page, `Ctrl+F` to jump to it, `Esc` to clear it.
-- **A much faster scriptlet scan.** Scriptlet lines are found with compiled code instead of reading every line of every list in script, and the table is virtualized, so there is no chunked rendering any more. On a real Brave profile, 22,645 rules scan in about four seconds and the search box filters them in well under a tenth of a second. A running scan can be cancelled.
-- **Dialogs and notifications inside the window.** Confirmations and reports follow the theme instead of using system message boxes, and routine results (applied, loaded, exported) are short notifications that fade out on their own.
-- **Activity panel.** The log is a collapsible panel with colored levels. Warnings and errors show a badge until you open it.
-- **Under the hood.** `src\core` no longer touches any control: everything that reads or writes the machine takes a snapshot of the selection (documented in `src\core\State.ps1`), which is what lets it run in the background. Tweak data, presets, the config file format and translations are unchanged, and old config files still import.
 
 ### What's new in v1.12
 
@@ -650,7 +650,7 @@ and attached to releases — it is not a tracked file in this repository.
 ```jsonc
 {
   "schemaVersion": 3,          // the file format
-  "appVersion": "2.1",         // the app that wrote it - moves independently
+  "appVersion": "2.0",         // the app that wrote it - moves independently
   "exported": "2026-09-25T14:03:11",
   "profile": "Recommended",    // stable mode id, never the translated label
   "policies":     { "BraveVPNDisabled": true },

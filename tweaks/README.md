@@ -1,6 +1,6 @@
 # Tweak data
 
-Everything Brave Free Origin can change on your machine is listed in this folder as plain data. The code in `src\` reads these files and builds the tabs, checkboxes and one-click modes from them. Nothing here is ever executed: each `.psd1` file is read with `Import-PowerShellDataFile`, which only accepts literal values (text, numbers, `$true`, `$false`, `$null`, lists and tables).
+Everything Brave Free Origin can change on your machine is listed in this folder as plain data. The code in `src\` reads these files and builds the tabs, checkboxes and one-click modes from them. [SOURCES.md](SOURCES.md) explains what each tweak does inside Brave and links the source code it was verified against. Nothing here is ever executed: each `.psd1` file is read with `Import-PowerShellDataFile`, which only accepts literal values (text, numbers, `$true`, `$false`, `$null`, lists and tables).
 
 | File | What it controls |
 |---|---|

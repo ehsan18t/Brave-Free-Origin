@@ -10,7 +10,9 @@
 # background runspace (src\ui\Jobs.ps1). The window builds it with
 # Get-SelectionSnapshot (src\ui\Model.ps1). Its shape:
 #
-#   Profile    string     active preset id, for reports and the config file
+#   Profile    string     active preset id, 'Custom' or 'CurrentState'
+#   BaseProfile string    the mode a Custom selection started from, or $null
+#   ChangeCount int       how many settings differ from BaseProfile
 #   Backup     bool       export a .reg backup before writing
 #   Policies   one entry per policy, in display order:
 #              Name, Type, Value (what Apply writes), Checked, HasChoices
@@ -117,7 +119,20 @@ function Get-BfoMachineState {
     $services = @{}
     foreach ($s in $script:Services) { $services[$s.Name] = Test-BraveServiceDisabled -Name $s.Name }
 
+    # The mode last applied, from the drift record: the window names the
+    # selection after it when this PC no longer matches any mode exactly.
+    $lastApplied = $null
+    try {
+        $record = Read-AppliedRecord
+        if ($record) {
+            $mode = Resolve-PresetId "$($record.mode)"
+            if ($mode -eq 'Custom' -and $record.baseMode) { $mode = Resolve-PresetId "$($record.baseMode)" }
+            if ($script:PresetOrder -contains $mode) { $lastApplied = $mode }
+        }
+    } catch { Write-Verbose "No usable record of the last apply: $_" }
+
     return [pscustomobject]@{
+        LastApplied = $lastApplied
         Values      = $values
         Tasks       = $tasks
         Services    = $services
@@ -139,6 +154,7 @@ function ConvertTo-BfoConfig {
         appVersion    = $AppVersion
         exported      = (Get-Date -Format 's')
         profile       = $Selection.Profile
+        baseProfile   = $Selection.BaseProfile
         policies      = [ordered]@{}
         policyValues  = [ordered]@{}
         flags         = [ordered]@{}

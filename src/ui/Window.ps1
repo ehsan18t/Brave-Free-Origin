@@ -81,7 +81,27 @@ function Update-ListSubtitle {
     $vm.ListSubtitle = [string](T 'list.selectedCount' @($on, $all))
 }
 
-# The list page shows a policy category, the System page or search results.
+# The settings that differ from the mode a Custom selection started from,
+# grouped under their page names like search results. The rows are the real
+# ones, so flipping one here flips it on its page too.
+function Get-ChangeRows {
+    $list = New-BfoList
+    $diff = if ($script:BaseProfile) { Get-PresetDifferences $script:BaseProfile } else { $null }
+    if (-not $diff) { return [pscustomobject]@{ Rows = $list; Count = 0; Startup = $false } }
+    foreach ($item in $script:NavItems) {
+        if ($item.Kind -ne 'Item' -or -not $script:PageRows.ContainsKey($item.Id)) { continue }
+        $header = $null
+        foreach ($row in $script:PageRows[$item.Id]) {
+            if ($row.Kind -eq 'Header' -or -not $diff.Rows.Contains($row)) { continue }
+            if (-not $header) { $header = New-HeaderRow -Title $item.Label; $list.Add($header) }
+            $list.Add($row)
+        }
+    }
+    return [pscustomobject]@{ Rows = $list; Count = $diff.Rows.Count; Startup = $diff.Startup }
+}
+
+# The list page shows a policy category, the System page, search results or
+# the changes from a mode.
 function Set-ListPage {
     param([string]$Id)
     $vm = $script:Vm
@@ -89,6 +109,19 @@ function Set-ListPage {
     $vm.SelectedOnlyVisibility = $script:Collapsed
     $vm.SelectButtonsVisibility = $script:Collapsed
     $vm.ListEmptyVisibility = $script:Collapsed
+    if ($Id -eq 'changes') {
+        $changes = Get-ChangeRows
+        $baseName = if ($script:BaseProfile) { [string](Get-PresetName $script:BaseProfile) } else { '' }
+        $vm.ListTitle = [string](T 'changes.title' @($baseName))
+        $vm.ListSubtitle = [string](T 'search.count' @($changes.Count))
+        if ($changes.Startup) {
+            $vm.ListIntro = [string](T 'changes.startup' @($baseName))
+            $vm.ListIntroVisibility = $script:Visible
+        }
+        $vm.ListEmptyVisibility = ConvertTo-Visibility ($changes.Count -eq 0 -and -not $changes.Startup)
+        $script:Ui.ListItems.ItemsSource = $changes.Rows
+        return
+    }
     if ($Id -eq 'results') {
         $query = $script:Ui.NavSearch.Text.Trim()
         $count = 0
@@ -118,11 +151,56 @@ function Set-ListPage {
     Update-ListSubtitle
 }
 
+# ---- Back ------------------------------------------------------------------------
+# Every page change pushes the page being left, so Back walks the way you
+# came. Search results count once, however many letters were typed, and are
+# restored with the query they showed. NoHistory is for moves that are not a
+# visit of their own: going back, and leaving search by clearing it.
+$script:NavHistory = [System.Collections.Generic.List[object]]::new()
+$script:NavHistoryLimit = 50
+$script:ResultsQuery = ''
+$script:ResultsSelectedOnly = $false
+
+function Update-BackState { $script:Vm.CanGoBack = ($script:NavHistory.Count -gt 0) }
+
+function Add-NavHistory {
+    param([string]$Page)
+    $entry = [pscustomobject]@{ Page = $Page; Query = $script:ResultsQuery; SelectedOnly = $script:ResultsSelectedOnly }
+    $script:NavHistory.Add($entry)
+    while ($script:NavHistory.Count -gt $script:NavHistoryLimit) { $script:NavHistory.RemoveAt(0) }
+    Update-BackState
+}
+
+function Invoke-BfoBack {
+    if ($script:DialogOpen) { return }
+    while ($script:NavHistory.Count -gt 0) {
+        $entry = $script:NavHistory[$script:NavHistory.Count - 1]
+        $script:NavHistory.RemoveAt($script:NavHistory.Count - 1)
+        # Leaving search by clearing it can leave the current page on top.
+        if ($entry.Page -eq $script:CurrentPage -and $entry.Page -ne 'results') { continue }
+        $script:SearchQuiet = $true
+        try {
+            if ($entry.Page -eq 'results') {
+                $script:Ui.NavSearch.Text = $entry.Query
+                $script:Vm.SelectedOnly = $entry.SelectedOnly
+            } else {
+                $script:Ui.NavSearch.Text = ''
+                $script:Vm.SelectedOnly = $false
+            }
+        } finally { $script:SearchQuiet = $false }
+        if ($entry.Page -eq 'results') { Update-SearchResults -NoHistory }
+        else { Show-BfoPage $entry.Page -NoHistory }
+        break
+    }
+    Update-BackState
+}
+
 function Show-BfoPage {
-    param([string]$Id, [switch]$NoAnimation)
+    param([string]$Id, [switch]$NoAnimation, [switch]$NoHistory)
     $panel = Get-PagePanel $Id
     $changed = ($Id -ne $script:CurrentPage)
-    if ($Id -ne 'results') { $script:LastPage = $Id }
+    if ($changed -and $script:CurrentPage -and -not $NoHistory) { Add-NavHistory $script:CurrentPage }
+    if ($Id -ne 'results' -and $Id -ne 'changes') { $script:LastPage = $Id }
     if ($panel -eq $script:Ui.PageList) { Set-ListPage $Id }
     $script:CurrentPage = $Id
     foreach ($page in $script:Pages) { $page.Visibility = ConvertTo-Visibility ($page -eq $panel) }
@@ -174,12 +252,15 @@ $script:SearchTimer.Add_Tick({
 })
 
 function Update-SearchResults {
+    param([switch]$NoHistory)
     $query = $script:Ui.NavSearch.Text.Trim()
     $selectedOnly = [bool]$script:Vm.SelectedOnly
     if (-not $query -and -not $selectedOnly) {
-        if ($script:CurrentPage -eq 'results') { Show-BfoPage $script:LastPage }
+        if ($script:CurrentPage -eq 'results') { Show-BfoPage $script:LastPage -NoHistory }
         return
     }
+    $script:ResultsQuery = $script:Ui.NavSearch.Text
+    $script:ResultsSelectedOnly = $selectedOnly
     $terms = @($query.ToLowerInvariant() -split '\s+' | Where-Object { $_ })
     $results = New-BfoList
     foreach ($item in $script:NavItems) {
@@ -199,7 +280,7 @@ function Update-SearchResults {
         }
     }
     $script:ResultRows = $results
-    Show-BfoPage 'results' -NoAnimation:($script:CurrentPage -eq 'results')
+    Show-BfoPage 'results' -NoAnimation:($script:CurrentPage -eq 'results') -NoHistory:$NoHistory
 }
 
 $ui.NavSearch.Add_TextChanged({
@@ -329,6 +410,32 @@ $script:Window.Add_Activated({ Set-BfoTheme })
 $script:Window.Add_SourceInitialized({ Update-BfoTitleBar })
 $script:Window.Add_ContentRendered({ Update-BfoWindowIcon })
 
+# ---- Action bar -------------------------------------------------------------------
+# Slides up when something is pending or running, and away when nothing is
+# (see Update-BarText in src\ui\Model.ps1). The bar's content is measured for
+# the height to open to. Before the window is on screen (and in headless
+# runs, where animations never advance) the height is set directly.
+$script:ActionBarShown = $false
+function Update-ActionBar {
+    param([bool]$Show)
+    $bar = $script:Ui.ActionBar
+    if (-not $bar -or $Show -eq $script:ActionBarShown) { return }
+    $script:ActionBarShown = $Show
+    $inner = $script:Ui.ActionBarInner
+    $inner.Measure([System.Windows.Size]::new([double]::PositiveInfinity, [double]::PositiveInfinity))
+    $target = if ($Show) { [Math]::Ceiling($inner.DesiredSize.Height) } else { 0 }
+    if (-not $script:Window.IsVisible) {
+        $bar.BeginAnimation([System.Windows.FrameworkElement]::HeightProperty, $null)
+        $bar.Height = $target
+        return
+    }
+    $slide = [System.Windows.Media.Animation.DoubleAnimation]::new($target, [TimeSpan]::FromMilliseconds(220))
+    $slide.EasingFunction = New-BfoEase
+    $bar.BeginAnimation([System.Windows.FrameworkElement]::HeightProperty, $slide)
+}
+
+$ui.BtnBack.Add_Click({ Invoke-BfoBack })
+
 # ---- Activity panel ----------------------------------------------------------------
 $script:ActivityOpen = $false
 function Set-ActivityPanel {
@@ -368,7 +475,12 @@ $script:Window.Add_PreviewKeyDown({
         return
     }
     $ctrl = ([System.Windows.Input.Keyboard]::Modifiers -band [System.Windows.Input.ModifierKeys]::Control) -ne 0
-    if ($ctrl -and $e.Key -eq [System.Windows.Input.Key]::F) {
+    # Alt+Left arrives as Key.System with the real key in SystemKey.
+    if (($e.Key -eq [System.Windows.Input.Key]::System -and $e.SystemKey -eq [System.Windows.Input.Key]::Left) -or
+        $e.Key -eq [System.Windows.Input.Key]::BrowserBack) {
+        Invoke-BfoBack
+        $e.Handled = $true
+    } elseif ($ctrl -and $e.Key -eq [System.Windows.Input.Key]::F) {
         [void]$script:Ui.NavSearch.Focus()
         $script:Ui.NavSearch.SelectAll()
         $e.Handled = $true
@@ -377,6 +489,15 @@ $script:Window.Add_PreviewKeyDown({
         $e.Handled = $true
     } elseif ($e.Key -eq [System.Windows.Input.Key]::F5 -and $script:Vm.IsIdle) {
         Invoke-BfoLoadState
+        $e.Handled = $true
+    }
+})
+
+# The mouse's back button (XButton1) goes back, as in Windows Settings.
+$script:Window.Add_PreviewMouseDown({
+    $e = $_
+    if ($e.ChangedButton -eq [System.Windows.Input.MouseButton]::XButton1 -and -not $script:DialogOpen) {
+        Invoke-BfoBack
         $e.Handled = $true
     }
 })

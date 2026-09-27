@@ -97,6 +97,7 @@ function New-AppliedRecord {
         appVersion = $script:AppVersion
         savedAt    = (Get-Date -Format 's')
         mode       = $Selection.Profile
+        baseMode   = $Selection.BaseProfile
         chromium   = $version.Chromium
         braveMinor = $version.BraveMinor
         policies   = $policies
@@ -163,7 +164,7 @@ function Get-RecordedValue {
 function Get-DriftReport {
     param([string]$BraveVersion)
     $record = Read-AppliedRecord
-    if (-not $record) { return [pscustomobject]@{ Mode = $null; SavedAt = $null; Items = @() } }
+    if (-not $record) { return [pscustomobject]@{ Mode = $null; Base = $null; SavedAt = $null; Items = @() } }
     $version = ConvertTo-BraveVersionInfo $BraveVersion
     $repeats = ConvertTo-RecordTable $record.repeats
     $values = Get-RegistryValueTable -Path $script:PolicyPath
@@ -234,7 +235,7 @@ function Get-DriftReport {
         }
     }
 
-    return [pscustomobject]@{ Mode = $record.mode; SavedAt = $record.savedAt; Items = $items }
+    return [pscustomobject]@{ Mode = $record.mode; Base = $record.baseMode; SavedAt = $record.savedAt; Items = $items }
 }
 
 # ---- Acting on it ---------------------------------------------------------------

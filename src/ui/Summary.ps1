@@ -141,7 +141,9 @@ function Get-PlanSummary {
     } else {
         # A named mode reads as "Applying Recommended"; a hand-picked mix as
         # "Applying your selection".
-        $mode = if (@('Custom', 'CurrentState') -contains $Selection.Profile) { T 'preview.yourSelection' } else { Get-PresetName $Selection.Profile }
+        $mode = if ($Selection.Profile -eq 'Custom' -and $Selection.BaseProfile) {
+            Get-ModeLabel -Mode 'Custom' -Base $Selection.BaseProfile -Count $Selection.ChangeCount
+        } elseif (@('Custom', 'CurrentState') -contains $Selection.Profile) { T 'preview.yourSelection' } else { Get-PresetName $Selection.Profile }
         $entries.Add((New-SummaryEntry -Kind Lead -Text (T 'preview.lead' @($mode, $changes, $keeps))))
     }
     if (@($Plan.FlagsBlocked).Count -gt 0 -and @($Plan.Flags | Where-Object { $_.Verb -ne 'KEEP' }).Count -gt 0) {

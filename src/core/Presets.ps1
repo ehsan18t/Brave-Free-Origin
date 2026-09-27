@@ -23,6 +23,18 @@ function Get-PresetNameEn {
     return $Key
 }
 
+# What a selection is called: a mode's name, or "Custom: <mode> + N changes"
+# when it started from a mode and was changed. English for reports and the log.
+function Get-ModeLabel {
+    param([string]$Mode, [string]$Base, [int]$Count, [switch]$English)
+    if ($Mode -eq 'Custom' -and $Base) {
+        if ($English) { return [string]::Format($script:EnglishStrings['mode.customFrom'], (Get-PresetNameEn $Base), $Count) }
+        return [string](T 'mode.customFrom' @((Get-PresetName $Base), $Count))
+    }
+    if ($English) { return [string](Get-PresetNameEn $Mode) }
+    return [string](Get-PresetName $Mode)
+}
+
 # A mode id from a config or the drift record, mapped onto today's modes.
 # Ids of earlier versions go through LegacyIds; anything unknown is Custom.
 function Resolve-PresetId {

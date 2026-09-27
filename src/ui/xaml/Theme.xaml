@@ -1066,7 +1066,7 @@
         </Grid.ColumnDefinitions>
         <TextBlock Text="{Binding Glyph}" Style="{StaticResource IconText}" HorizontalAlignment="Center"/>
         <TextBlock Grid.Column="1" Text="{Binding Label}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-        <TextBlock Grid.Column="2" Text="{Binding Count}" Margin="8,0,12,0" VerticalAlignment="Center" FontSize="12"
+        <TextBlock Grid.Column="2" Text="{Binding Count}" Margin="8,0,4,0" VerticalAlignment="Center" FontSize="12"
                    Foreground="{DynamicResource TextTertiary}"/>
       </Grid>
     </Grid>

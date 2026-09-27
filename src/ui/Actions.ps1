@@ -98,8 +98,8 @@ function Set-SelectionFromMachine {
     } finally {
         Pop-SuppressSelectionEvents
     }
-    $script:ActiveProfile = 'CurrentState'
     Update-OverrideStates
+    Set-ModeFromMachine -LastApplied $State.LastApplied
     Set-Baseline -Scope All
     Update-SelectionSummary
 }
@@ -114,20 +114,28 @@ function Set-HostsRowsFromDomains {
     }
 }
 
+# Discard is a load too: reading this PC again puts every switch back to what
+# is really applied, which is exactly what "throw my changes away" means.
 function Invoke-BfoLoadState {
-    param([switch]$Quiet)
+    param([switch]$Quiet, [switch]$Discard)
     $script:LoadQuiet = [bool]$Quiet
-    Start-BfoJob -Name 'Load current state' -BusyKey 'busy.loading' `
+    $script:LoadDiscard = [bool]$Discard
+    Start-BfoJob -Name 'Load current state' -BusyKey $(if ($Discard) { 'busy.discarding' } else { 'busy.loading' }) `
         -Script { Get-BfoMachineState } -OnSuccess {
         param($State)
         Set-SelectionFromMachine $State
-        Write-BfoLog 'Loaded current system state.'
+        Write-BfoLog $(if ($script:LoadDiscard) { 'Discarded pending changes; reloaded the current system state.' } else { 'Loaded current system state.' })
         $pending = $script:PendingPreset
         $script:PendingPreset = $null
         if ($pending) { Invoke-BfoPreset $pending }
+        elseif ($script:LoadDiscard) { Show-BfoToast -Severity Success -Title (T 'toast.discarded') -Message (T 'toast.discardedText') }
         elseif (-not $script:LoadQuiet) { Show-BfoToast -Severity Success -Title (T 'toast.loaded') -Message (T 'toast.loadedText') }
     }
 }
+
+$ui.BtnDiscard.Add_Click({ Invoke-BfoLoadState -Discard })
+$ui.BtnResetToBase.Add_Click({ if ($script:BaseProfile) { Invoke-BfoPreset $script:BaseProfile } })
+$ui.BtnShowChanges.Add_Click({ Show-BfoPage 'changes' })
 
 # ---- Preview, apply, verify ------------------------------------------------------------
 # One plan, two views: the plain-language summary (src\ui\Summary.ps1) and the
@@ -158,7 +166,7 @@ function Invoke-BfoApply {
             $writeFlags = $false
         }
     }
-    $script:ApplyMode = $script:ActiveProfile
+    $script:ApplyLabel = [string]$script:Vm.ModeName
     $script:ApplyState = Get-SelectionState
     $script:ApplyBaselineBefore = $script:Baseline.Clone()
     Start-BfoJob -Name 'Apply' -BusyKey 'busy.applying' `
@@ -174,10 +182,10 @@ function Invoke-BfoApply {
         }
         Update-SelectionSummary
         if (@($Result.FlagsSkipped).Count -gt 0) {
-            Show-BfoToast -Severity Warning -Title (T 'toast.applied' @((Get-PresetName $script:ApplyMode))) `
+            Show-BfoToast -Severity Warning -Title (T 'toast.applied' @($script:ApplyLabel)) `
                 -Message (T 'toast.appliedNoFlags' @($Result.Applied, $Result.Cleared, (@($Result.FlagsSkipped) -join ', ')))
         } else {
-            Show-BfoToast -Severity Success -Title (T 'toast.applied' @((Get-PresetName $script:ApplyMode))) `
+            Show-BfoToast -Severity Success -Title (T 'toast.applied' @($script:ApplyLabel)) `
                 -Message (T 'toast.appliedText' @($Result.Applied, $Result.Cleared))
         }
         Invoke-BfoDriftCheck
@@ -206,6 +214,7 @@ function Invoke-BfoFullRestore {
             $script:Vm.StartupEnabled = $false
         } finally { Pop-SuppressSelectionEvents }
         $script:ActiveProfile = 'Default'
+        $script:BaseProfile = 'Default'
         Update-OverrideStates
         Set-Baseline -Scope All
         Update-SelectionSummary
@@ -396,7 +405,14 @@ function Import-BfoConfig {
     } finally {
         Pop-SuppressSelectionEvents
     }
-    $script:ActiveProfile = if ($Config.profile) { Resolve-PresetId "$($Config.profile)" } else { 'Custom' }
+    # A mode id names the selection outright; a Custom config carries the mode
+    # it started from, so "Custom: Origin + 3 changes" survives a round trip.
+    $mode = if ($Config.profile) { Resolve-PresetId "$($Config.profile)" } else { 'Custom' }
+    $base = if ($Config.baseProfile) { Resolve-PresetId "$($Config.baseProfile)" } else { $null }
+    if ($script:PresetOrder -contains $mode) { $base = $mode }
+    elseif ($script:PresetOrder -notcontains $base) { $base = $null }
+    $script:BaseProfile = $base
+    $script:ActiveProfile = if ($mode -eq 'CurrentState') { 'Custom' } else { $mode }
     Update-OverrideStates
     Update-SelectionSummary
 }

@@ -26,7 +26,7 @@ That is the launcher. It opens PowerShell with the right execution-policy flag a
 
 **3. Click "Yes" on the UAC prompt.** Admin rights are required because the tool writes to `HKEY_LOCAL_MACHINE\Software\Policies\BraveSoftware\Brave` — the same place corporate IT writes group policies. No admin = no policies = nothing happens.
 
-**4. The app opens on Home and reads what this PC already has.** It does that in the background, so the window is usable right away; within a second or two every switch shows the current state and the bottom bar says whether anything is left to apply. `F5`, or `Load current state` on Home or in Settings, reads it again.
+**4. The app opens on Home and reads what this PC already has.** It does that in the background, so the window is usable right away; within a second or two every switch shows the current state. Home names what it found: a mode when this PC matches one exactly, otherwise the mode you last applied (or the closest one) with a count, such as "Custom: Recommended + 4 changes". `F5`, or `Load current state` on Home or in Settings, reads it again.
 
 **5. Pick a mode** from the cards on the Home page:
 
@@ -42,7 +42,7 @@ Each mode builds on the one before it. No mode touches Brave's updates: the `Sys
 
 Picking a mode only changes the switches. Nothing is written until you apply.
 
-**6. (Optional) Fine-tune.** Every policy category, `System (Tasks / Services)`, `Hosts Blocklist` and `Search & Startup` has its own page in the side navigation, with a count of what is switched on. Click anywhere on a setting card to flip it. The bottom bar keeps a running count of changes that are not applied yet.
+**6. (Optional) Fine-tune.** Every policy category, `System (Tasks / Services)`, `Hosts Blocklist` and `Search & Startup` has its own page in the side navigation, with a count of what is switched on. Click anywhere on a setting card to flip it. As soon as something is not applied yet, a bar slides up at the bottom with the count and **Discard**, **Preview changes** and **Apply to Brave**; Discard puts every switch back to what this PC has. Changing switches after picking a mode shows as, for example, "Custom: Origin + 3 changes": the mode's card on Home gets a Modified badge, **Show changes** lists just the differences, and **Reset to Origin** undoes them. The back arrow at the top left (or `Alt+Left`, or the mouse's back button) returns to the pages you came from, and the Activity log button sits next to it.
 
 There is also a `Default Scriptlets (Advanced)` page. That is a separate optional tool for viewing Brave's built-in adblock scriptlet rules and manually disabling selected ones. Presets and the big `Apply to Brave` button never touch it.
 
@@ -119,6 +119,8 @@ Every setting checked against the source, new modes, flags, and a warning when a
 - **One place for startup settings.** Startup, homepage and new tab settings are only on the Search & Startup page, which gained a Homepage section.
 - **Fixed hosts groups.** P3A now blocks the STAR servers it actually uses, the usage ping blocks `usage-ping.brave.com`, and Web Discovery blocks its four real servers. `go-updater.brave.com`, which serves Shields filter-list and component updates, moved from the Variations group into Component Updates. No mode ticks Variations or Component Updates any more.
 - **System page.** The Brave Elevation Service is no longer listed: Chromium uses it to decrypt cookies and saved passwords, so disabling it signed people out of sites. VPN services are found for every channel. No mode changes this page.
+- **Easier to find your way.** A back arrow at the top left walks back through the pages you visited, including search results with their query, and `Alt+Left` and the mouse's back button do the same. The bottom bar only slides up while something is pending or running, with a new **Discard** button, and the Activity log button moved next to the back arrow. The sidebar scroll bar no longer covers the page counts.
+- **Custom remembers where it started.** A selection changed after picking a mode reads "Custom: Origin + 3 changes" everywhere (Home, the bar, the preview, reports and exported configs), with Show changes and Reset to Origin on Home. Undoing the edits makes it plain Origin again. On startup the app names this PC's mode the same way. Only policy switches, their values, flags and Max's startup setting count as changes; the System page, hosts groups and search picks do not.
 - **English only for now.** The Simplified Chinese translation was removed; the translation system stays for new languages.
 
 ### What's new in v2.0

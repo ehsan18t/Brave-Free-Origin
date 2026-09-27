@@ -28,6 +28,14 @@ Add-Strings @{
     'bar.noPending'        = 'Everything is applied'
     'bar.pending'          = '{0} change(s) not applied yet'
     'busy.applying'        = 'Applying to Brave...'
+    'busy.discarding'      = 'Discarding changes...'
+    'changes.startup'      = '{0} opens a new tab when Brave starts, and the Search & Startup page is set differently.'
+    'changes.title'        = 'Changes from {0}'
+    'home.resetTo'         = 'Reset to {0}'
+    'home.showChanges'     = 'Show {0} change(s)'
+    'nav.back'             = 'Back (Alt+Left)'
+    'toast.discarded'      = 'Changes discarded'
+    'toast.discardedText'  = 'Every switch shows what this PC has again.'
     'busy.hosts'           = 'Updating the hosts file...'
     'busy.loading'         = 'Reading the current state of this PC...'
     'busy.preview'         = 'Building the preview...'
@@ -173,7 +181,11 @@ Add-Strings @{
 
 # ---- Mode deck ---------------------------------------------------------------
 Add-Strings @{
-    'mode.intro' = 'Pick a one-click mode, then fine-tune any page on the left if you want to go deeper. Nothing is written until you apply.'
+    'mode.customBase'            = 'Custom, based on {0}'
+    'mode.customFrom'            = 'Custom: {0} + {1} change(s)'
+    'mode.customFromDescription' = 'Started from {0}, with {1} change(s) of your own. Show the changes to review them, or reset to {0} to undo them.'
+    'mode.intro'                 = 'Pick a one-click mode, then fine-tune any page on the left if you want to go deeper. Nothing is written until you apply.'
+    'mode.modifiedBadge'         = 'Modified: {0} change(s)'
     'mode.risk'  = 'Risk: {0}'
 }
 
@@ -538,6 +550,8 @@ Add-Strings @{
 # ---- Utility bar -------------------------------------------------------------
 Add-Strings @{
     'action.apply'       = 'Apply to Brave'
+    'action.discard'     = 'Discard'
+    'action.discardTip'  = 'Throw away the changes that are not applied yet, and show what this PC has.'
     'action.backup'      = 'Backup existing policies before applying'
     'action.fullRestore' = 'Full restore / stock'
     'action.preview'     = 'Preview changes'

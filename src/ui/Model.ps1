@@ -71,7 +71,13 @@ function Get-ChoiceIndex {
 }
 
 # ---- The view model -----------------------------------------------------------------
+# ActiveProfile is what the selection is called: a mode id, 'Custom' or
+# 'CurrentState'. BaseProfile is the mode a Custom selection started from
+# (or the mode it still is), and ChangeCount how many settings differ from
+# it; together they read "Custom: Origin + 3 changes".
 $script:ActiveProfile = 'Custom'
+$script:BaseProfile = $null
+$script:ChangeCount = 0
 
 $script:Vm = New-BfoObject @{
     VersionText = ''; BraveText = ''; ChannelChipText = ''; AboutTitle = ''; PolicyKeyText = ''
@@ -90,7 +96,9 @@ $script:Vm = New-BfoObject @{
     LanguageItems = $null; LanguageIndex = 0; LanguageNote = ''
     ThemeItems = $null; ThemeIndex = 0
     Backup = $true
-    BarTitle = ''; BarSubtitle = ''; BusyText = ''
+    BarTitle = ''; BarSubtitle = ''; BusyText = ''; BarButtonsVisibility = $script:Collapsed
+    CanGoBack = $false
+    ShowChangesText = ''; ResetToBaseText = ''; BaseActionsVisibility = $script:Collapsed
     IsBusy = $false; IsIdle = $true; BusyVisibility = $script:Collapsed
     AlertCount = ''; AlertVisibility = $script:Collapsed
     DriftVisibility = $script:Collapsed; DriftTitle = ''; DriftText = ''; DriftItems = (New-BfoList)
@@ -351,7 +359,7 @@ $script:PresetRisk = @{ Default = 'neutral'; Origin = 'low'; Recommended = 'low'
 foreach ($preset in $script:PresetOrder) {
     $script:Vm.Presets.Add((New-BfoObject @{
         Id = $preset; Name = ''; Description = ''; Risk = ''; RiskLevel = $(if ($script:PresetRisk.ContainsKey($preset)) { $script:PresetRisk[$preset] } else { 'neutral' })
-        IsActive = $false; ActiveVisibility = $script:Collapsed
+        IsActive = $false; ActiveVisibility = $script:Collapsed; ModifiedVisibility = $script:Collapsed; ModifiedText = ''
     }))
 }
 
@@ -414,8 +422,10 @@ function Get-SelectionSnapshot {
         }
     }
     return [pscustomobject]@{
-        Profile   = $script:ActiveProfile
-        Backup    = [bool]$script:Vm.Backup
+        Profile     = $script:ActiveProfile
+        BaseProfile = $script:BaseProfile
+        ChangeCount = $script:ChangeCount
+        Backup      = [bool]$script:Vm.Backup
         Policies  = $policies.ToArray()
         Flags     = $flags.ToArray()
         Tasks     = $tasks.ToArray()
@@ -481,7 +491,9 @@ function Get-CountText { param([int]$Selected, [int]$Total) "$Selected / $Total"
 
 function Update-SelectionSummary {
     $vm = $script:Vm
+    Update-ModeIdentity
     $mode = if ([string]::IsNullOrWhiteSpace($script:ActiveProfile)) { 'Custom' } else { $script:ActiveProfile }
+    $hasBase = ($mode -eq 'Custom' -and $script:BaseProfile)
 
     $counts = @{}
     foreach ($kind in @('Policy', 'Flag', 'Task', 'Service', 'Hosts')) { $counts[$kind] = @{ On = 0; All = 0 } }
@@ -493,8 +505,10 @@ function Update-SelectionSummary {
         if ($row.Checked) { $counts[$row.Kind].On++; $pageCounts[$row.PageId].On++ }
     }
 
-    $vm.ModeName = [string](Get-PresetName $mode)
-    $vm.ModeDescription = [string](Get-PresetDescription $mode)
+    $vm.ModeName = [string](Get-ModeLabel -Mode $mode -Base $script:BaseProfile -Count $script:ChangeCount)
+    $vm.ModeDescription = if ($hasBase) {
+        [string](T 'mode.customFromDescription' @((Get-PresetName $script:BaseProfile), $script:ChangeCount))
+    } else { [string](Get-PresetDescription $mode) }
     $vm.RiskLine = [string](T 'mode.risk' @((Get-PresetRisk $mode)))
     $vm.PolicyStat = Get-CountText $counts.Policy.On $counts.Policy.All
     $vm.FlagStat = Get-CountText $counts.Flag.On $counts.Flag.All
@@ -505,6 +519,14 @@ function Update-SelectionSummary {
         $active = ($card.Id -eq $mode)
         $card.IsActive = $active
         $card.ActiveVisibility = ConvertTo-Visibility $active
+        $modified = ($hasBase -and $card.Id -eq $script:BaseProfile)
+        $card.ModifiedVisibility = ConvertTo-Visibility $modified
+        $card.ModifiedText = if ($modified) { [string](T 'mode.modifiedBadge' @($script:ChangeCount)) } else { '' }
+    }
+    $vm.BaseActionsVisibility = ConvertTo-Visibility $hasBase
+    if ($hasBase) {
+        $vm.ShowChangesText = [string](T 'home.showChanges' @($script:ChangeCount))
+        $vm.ResetToBaseText = [string](T 'home.resetTo' @((Get-PresetName $script:BaseProfile)))
     }
     foreach ($item in $script:NavItems) {
         if ($item.Kind -eq 'Item' -and $pageCounts.ContainsKey($item.Id)) {
@@ -519,23 +541,109 @@ function Update-SelectionSummary {
     Update-BarText
 }
 
+# The bottom bar only exists while something is pending or running: it says
+# how many changes are not applied yet and offers Discard, Preview and Apply,
+# or shows what is running. Hosts groups have their own buttons and never
+# bring it up.
 function Update-BarText {
     $vm = $script:Vm
     $vm.BarTitle = $vm.ModeName
+    $pending = [int]$script:PendingMain
     if ($vm.IsBusy) {
         $vm.BarSubtitle = $vm.BusyText
-        return
+    } else {
+        $vm.BarSubtitle = if ($pending -gt 0) { [string](T 'bar.pending' @($pending)) } else { [string](T 'bar.noPending') }
     }
-    # The counts are on Home and beside each page in the navigation; the bar
-    # only says whether there is anything left to apply.
-    $vm.BarSubtitle = if ($script:PendingMain -gt 0) { [string](T 'bar.pending' @($script:PendingMain)) } else { [string](T 'bar.noPending') }
+    $vm.BarButtonsVisibility = ConvertTo-Visibility ($pending -gt 0 -and -not $vm.IsBusy)
+    if (Get-Command Update-ActionBar -ErrorAction SilentlyContinue) { Update-ActionBar -Show ($pending -gt 0 -or $vm.IsBusy) }
 }
 
-# Ticking a policy, flag, task or service by hand, or picking a value, makes
-# the loadout Custom. Hosts groups do not: they are not part of a mode's apply.
+# ---- Which mode the selection is ---------------------------------------------------------
+# A mode's payload never changes while the app runs, so each is resolved once.
+$script:PresetPayloadCache = @{}
+function Get-CachedPresetPayload {
+    param([string]$Preset)
+    if (-not $script:PresetPayloadCache.ContainsKey($Preset)) { $script:PresetPayloadCache[$Preset] = Get-PresetPayload -Preset $Preset }
+    return $script:PresetPayloadCache[$Preset]
+}
+
+# Where the selection differs from a mode. Only what modes set counts: policy
+# switches and their values, flags, and the startup mode when the mode sets
+# one. The System page, hosts groups and the search picks never make a
+# selection Custom, because no mode sets them. Rows are the differing setting
+# rows; Startup is $true when the startup setting differs.
+function Get-PresetDifferences {
+    param([string]$Preset)
+    $payload = Get-CachedPresetPayload $Preset
+    $rows = New-BfoList
+    foreach ($row in $script:Rows) {
+        if (-not $row.Supported) { continue }
+        if ($row.Kind -eq 'Policy') {
+            $want = $payload.Policies -contains $row.Id
+            if ([bool]$row.Checked -ne $want) { $rows.Add($row); continue }
+            if ($want -and $row.Policy.Choices) {
+                $expected = if ($payload.Values.ContainsKey($row.Id)) { $payload.Values[$row.Id] } else { $row.Policy.ApplyValue }
+                if (-not (Test-PolicyValueEqual (Get-RowValue $row) $expected)) { $rows.Add($row) }
+            }
+        } elseif ($row.Kind -eq 'Flag') {
+            if ([bool]$row.Checked -ne ($payload.Flags -contains $row.Id)) { $rows.Add($row) }
+        }
+    }
+    $startup = $false
+    if ($payload.Startup) {
+        $vm = $script:Vm
+        $startup = (-not $vm.StartupEnabled) -or ((Get-ChoiceId $vm.StartupModeItems $vm.StartupModeIndex) -ne $payload.Startup)
+    }
+    return [pscustomobject]@{ Rows = $rows; Startup = $startup; Count = ($rows.Count + [int]$startup) }
+}
+
+# Keeps the name honest after every change: a selection with a base mode is
+# that mode while it matches, and "Custom: <mode> + N changes" once it does not.
+function Update-ModeIdentity {
+    if (-not $script:BaseProfile -or $script:PresetOrder -notcontains $script:BaseProfile) { $script:ChangeCount = 0; return }
+    $count = (Get-PresetDifferences $script:BaseProfile).Count
+    $script:ChangeCount = $count
+    $script:ActiveProfile = if ($count -eq 0) { $script:BaseProfile } else { 'Custom' }
+}
+
+# A hand edit with no mode to compare against is simply Custom. With a base
+# mode, Update-ModeIdentity works out the name.
 function Set-CustomMode {
     if ($script:SuppressSelectionEvents) { return }
+    if (-not $script:BaseProfile) { $script:ActiveProfile = 'Custom' }
+}
+
+# Names the selection just read from this PC. A PC that matches a mode is that
+# mode. Otherwise the base is the mode last applied (from the drift record),
+# or the closest mode when there is no record; a PC more than
+# $script:ModeMatchLimit settings away from every mode stays "Current State".
+$script:ModeMatchLimit = 10
+function Set-ModeFromMachine {
+    param([string]$LastApplied)
+    $best = $null
+    $bestCount = [int]::MaxValue
+    foreach ($preset in $script:PresetOrder) {
+        $count = (Get-PresetDifferences $preset).Count
+        if ($count -eq 0) {
+            $script:BaseProfile = $preset
+            $script:ActiveProfile = $preset
+            $script:ChangeCount = 0
+            return
+        }
+        if ($count -lt $bestCount) { $best = $preset; $bestCount = $count }
+    }
+    if ($LastApplied -and $script:PresetOrder -contains $LastApplied) {
+        $script:BaseProfile = $LastApplied
+    } elseif ($bestCount -le $script:ModeMatchLimit) {
+        $script:BaseProfile = $best
+    } else {
+        $script:BaseProfile = $null
+        $script:ActiveProfile = 'CurrentState'
+        $script:ChangeCount = 0
+        return
+    }
     $script:ActiveProfile = 'Custom'
+    Update-ModeIdentity
 }
 
 # Loads a preset into the rows. Nothing is written until Apply. A mode sets
@@ -584,6 +692,8 @@ function Set-PresetSelection {
     }
     Update-OverrideStates
     $script:ActiveProfile = $Preset
+    $script:BaseProfile = $Preset
+    $script:ChangeCount = 0
 }
 
 # Language-dependent text that is not a plain resource string.
@@ -654,7 +764,9 @@ function Update-DriftText {
         return
     }
     $mode = Resolve-PresetId "$($report.Mode)"
-    $vm.DriftTitle = [string](T 'drift.title' @((Get-PresetName $mode), $items.Count))
+    $base = if ($report.Base) { Resolve-PresetId "$($report.Base)" } else { $null }
+    $modeName = if ($mode -eq 'Custom' -and $base -and $base -ne 'Custom') { [string](T 'mode.customBase' @((Get-PresetName $base))) } else { [string](Get-PresetName $mode) }
+    $vm.DriftTitle = [string](T 'drift.title' @($modeName, $items.Count))
     $reverted = @($items | Where-Object { $_.Status -ne 'retired' }).Count
     $retired = @($items | Where-Object { $_.Status -eq 'retired' }).Count
     # The record stores a sortable timestamp; show it the way Windows shows dates.

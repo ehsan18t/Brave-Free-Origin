@@ -206,7 +206,7 @@ function Format-ApplyPlanReport {
 
     [void]$report.AppendLine('Brave Free Origin apply preview')
     [void]$report.AppendLine("Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')")
-    [void]$report.AppendLine("Mode: $(Get-PresetNameEn $modeKey)")
+    [void]$report.AppendLine("Mode: $(Get-ModeLabel -Mode $modeKey -Base $Selection.BaseProfile -Count $Selection.ChangeCount -English)")
     [void]$report.AppendLine("Policy key (read by every Brave channel): $($Plan.Path)")
     [void]$report.AppendLine("Backup before apply: $([bool]$Selection.Backup)")
     [void]$report.AppendLine('')

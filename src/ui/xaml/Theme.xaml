@@ -79,7 +79,7 @@
     <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
     <Setter Property="BorderBrush" Value="{DynamicResource ControlStroke}"/>
     <Setter Property="BorderThickness" Value="1"/>
-    <Setter Property="Padding" Value="12,5,12,6"/>
+    <Setter Property="Padding" Value="12,5,12,5"/>
     <Setter Property="MinHeight" Value="32"/>
     <Setter Property="HorizontalContentAlignment" Value="Center"/>
     <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}"/>
@@ -148,7 +148,7 @@
   <Style x:Key="SubtleButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
     <Setter Property="Background" Value="Transparent"/>
     <Setter Property="BorderBrush" Value="Transparent"/>
-    <Setter Property="Padding" Value="10,5,10,6"/>
+    <Setter Property="Padding" Value="10,5,10,5"/>
     <Style.Triggers>
       <Trigger Property="IsMouseOver" Value="True">
         <Setter Property="Background" Value="{DynamicResource SubtleHover}"/>
@@ -362,7 +362,7 @@
     <Setter Property="CaretBrush" Value="{DynamicResource TextPrimary}"/>
     <Setter Property="SelectionBrush" Value="{DynamicResource Accent}"/>
     <Setter Property="BorderThickness" Value="1"/>
-    <Setter Property="Padding" Value="8,5,8,6"/>
+    <Setter Property="Padding" Value="8,5,8,5"/>
     <Setter Property="MinHeight" Value="32"/>
     <Setter Property="VerticalContentAlignment" Value="Center"/>
     <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
@@ -373,7 +373,10 @@
             <Border x:Name="Bd" CornerRadius="4" Background="{TemplateBinding Background}"
                     BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" SnapsToDevicePixels="True">
               <Grid>
-                <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" Focusable="False"
+                <!-- No margin here: TextBoxBase hands its Padding to this
+                     ScrollViewer, whose template already applies it, so a
+                     margin would pad the text twice. -->
+                <ScrollViewer x:Name="PART_ContentHost" Focusable="False"
                               VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
                               HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}"
                               VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}"/>
@@ -459,7 +462,7 @@
     <Setter Property="Background" Value="{DynamicResource ControlBg}"/>
     <Setter Property="BorderBrush" Value="{DynamicResource ControlStroke}"/>
     <Setter Property="MinHeight" Value="32"/>
-    <Setter Property="Padding" Value="11,5,34,6"/>
+    <Setter Property="Padding" Value="11,5,34,5"/>
     <Setter Property="MaxDropDownHeight" Value="360"/>
     <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}"/>
     <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
@@ -1043,7 +1046,7 @@
             </ItemsControl>
           </StackPanel>
           <ComboBox Grid.Column="1" ItemsSource="{Binding Choices}" SelectedIndex="{Binding ChoiceIndex, Mode=TwoWay}"
-                    Visibility="{Binding ChoiceVisibility}" MinWidth="150" Margin="16,0,0,0" VerticalAlignment="Center"/>
+                    Visibility="{Binding ChoiceVisibility}" Width="200" Margin="16,0,0,0" VerticalAlignment="Center"/>
         </Grid>
       </CheckBox>
     </Grid>

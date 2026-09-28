@@ -79,6 +79,7 @@ $script:SourceFiles = @(
     'core\Registry.ps1'
     'core\Hosts.ps1'
     'core\Flags.ps1'
+    'core\Prefs.ps1'
     'core\SearchStartup.ps1'
     'core\Presets.ps1'
     'core\Plan.ps1'

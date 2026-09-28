@@ -335,6 +335,23 @@
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
 
+              <!-- How Apply writes every ticked setting: changeable in Brave
+                   (the default) or locked. See Get-PolicyLevel in
+                   src\core\Registry.ps1. -->
+              <CheckBox x:Name="ChkLock" Style="{StaticResource SettingCard}" IsChecked="{Binding LockSettings}" Margin="0,8,0,0" IsEnabled="{Binding IsIdle}">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Text="&#xE72E;" Style="{StaticResource RowIcon}"/>
+                  <StackPanel Grid.Column="1">
+                    <TextBlock Text="{DynamicResource home.lockTitle}" TextWrapping="Wrap"/>
+                    <TextBlock Text="{DynamicResource home.lockDesc}" Style="{StaticResource CaptionText}"/>
+                  </StackPanel>
+                </Grid>
+              </CheckBox>
+
               <TextBlock Text="{DynamicResource home.selectionTitle}" Style="{StaticResource SectionText}"/>
               <Border Style="{StaticResource Card}" Padding="20,16,20,16">
                 <StackPanel>

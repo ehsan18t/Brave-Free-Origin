@@ -33,7 +33,7 @@ Everything Brave Free Origin can change on your machine is listed in this folder
 | Field | Meaning |
 |---|---|
 | `Category` | Tab id. The tab title is the string `category.<Category>`. |
-| `Name` | Registry value name under `HKLM\Software\Policies\BraveSoftware\Brave`, the key every Brave channel reads. Written when ticked, removed when unticked. |
+| `Name` | Registry value name under `HKLM\Software\Policies\BraveSoftware\Brave` (locked) or its `Recommended` subkey (changeable in Brave), the keys every Brave channel reads. Written when ticked, removed when unticked. |
 | `Type` | `'DWORD'` (a number), `'STRING'` (quoted text) or `'LIST'` (a list of quoted text, written as a subkey of numbered values, like `RestoreOnStartupURLs`). |
 | `ApplyValue` | The value written when ticked. |
 | `BraveDefault` | Optional. The value Brave behaves as when the policy is not set. The card then says whether ticking changes Brave's default or only locks it. Leave it out when Brave has no fixed default. |
@@ -43,6 +43,22 @@ Everything Brave Free Origin can change on your machine is listed in this folder
 | `Impacts` | Optional tags for side effects worth a warning, for example `@('noSync')`. |
 | `Choices` | Optional. Shows a dropdown next to the checkbox, for example `@(@{ Id = 'enable'; Value = 1 }, @{ Id = 'disable'; Value = 0 })`. `ApplyValue` must be one of the values. Each label is the string `policy.<Name>.choice.<Id>`. |
 | `LegacyNames` | Optional. Names an earlier version used for this setting, so old configs land on this row. |
+| `Lock` | `$true` for a row that is always a locked policy: a feature kill switch Brave only obeys as mandatory, or a setting Brave has no toggle for. Give either `Lock` or `Prefs`. |
+| `Prefs` | The prefs Brave's own toggle writes for this setting (see below). Unless the user turns on **Lock settings**, the row is written as a recommended policy and these prefs are set in every profile, so it takes effect and stays changeable in Brave. |
+| `PrefOnly` | Optional, with `Prefs`. `$true` when Brave enforces the policy even from the `Recommended` subkey (content setting defaults such as Shields and site permissions): unless locked, only the prefs are written. |
+
+Each entry of `Prefs` is a table:
+
+| Field | Meaning |
+|---|---|
+| `Path` | The pref, as Brave names it: `brave.de_amp.enabled`. |
+| `File` | `'Profile'` (the default: each profile's `Preferences`) or `'LocalState'` (the channel's `Local State`, for browser-wide prefs such as `brave.p3a.enabled`). |
+| `Map` | How the policy value becomes the pref value: `'bool'` (the default; 0 is false), `'same'`, or a table such as `@{ 0 = 0; 1 = 2 }`. |
+| `Rule` | `$true` for a Shields default Brave stores as a rule for every site (`profile.content_settings.exceptions.<type>` with the pattern `*,*`). |
+| `Item` | For a `LIST` policy: the pref is true when the list holds this item. |
+| `Protected` | `$true` for a pref Brave signs in `Secure Preferences` (home button, homepage, startup, search engine). It is never written; Preview warns when the user's own value would win over the recommendation. |
+
+`Test-Tweaks.ps1` checks that every value a row can write converts to each of its prefs, and that no pref belongs to two rows. Apply only writes a channel's files while that channel is closed, and unticking a row resets a pref only while it still holds what the app wrote.
 
 The row description is the string `policy.<Name>.description`. Startup, homepage and new tab policies are not rows: the Search & Startup page is their only writer.
 

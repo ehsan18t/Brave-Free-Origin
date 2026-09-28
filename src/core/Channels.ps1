@@ -10,6 +10,13 @@
 # generate_policy_source.py), so Beta, Nightly and Dev share Stable's policies.
 $script:PolicyPath = 'HKLM:\Software\Policies\BraveSoftware\Brave'
 
+# Policies under this subkey are recommended, not mandatory: Brave starts from
+# the value but leaves the setting changeable, and a change made in Brave wins
+# (Chromium's policy_loader_win.cc reads the "Recommended" subkey of the same
+# key as the recommended level). Settings Brave shows a toggle for go here
+# unless the user chose to lock them; see Get-PolicyLevel in core\Registry.ps1.
+$script:RecommendedPath = "$script:PolicyPath\Recommended"
+
 # Versions before 2.0 wrote Beta, Nightly and Dev policies under these keys.
 # Brave never read them; Apply and the full restore remove them.
 $script:LegacyPolicyPaths = @(

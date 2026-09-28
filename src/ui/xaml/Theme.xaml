@@ -1025,6 +1025,12 @@
             <TextBlock Text="{Binding Title}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimary}"/>
             <TextBlock Text="{Binding Note}" Visibility="{Binding NoteVisibility}" Style="{StaticResource CaptionText}" Margin="0,2,0,0"/>
             <TextBlock Text="{Binding Detail}" Style="{StaticResource MonoText}" Margin="0,3,0,0"/>
+            <!-- Whether Brave lets the user change it after Apply (policy rows) -->
+            <StackPanel Orientation="Horizontal" Visibility="{Binding LevelVisibility}" Margin="0,5,0,0">
+              <TextBlock Text="{Binding LevelGlyph}" FontFamily="{StaticResource IconFont}" FontSize="11" Margin="0,1,6,0"
+                         VerticalAlignment="Center" Foreground="{DynamicResource TextSecondary}"/>
+              <TextBlock Text="{Binding LevelText}" Style="{StaticResource CaptionText}" TextWrapping="Wrap"/>
+            </StackPanel>
             <!-- Side effects from the tweak's Impacts tags (tweaks\tags.psd1) -->
             <ItemsControl ItemsSource="{Binding ImpactItems}" Visibility="{Binding ImpactVisibility}" Margin="0,6,0,0" Focusable="False">
               <ItemsControl.ItemsPanel>

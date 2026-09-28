@@ -96,6 +96,7 @@ $script:Vm = New-BfoObject @{
     LanguageItems = $null; LanguageIndex = 0; LanguageNote = ''
     ThemeItems = $null; ThemeIndex = 0
     Backup = $true
+    LockSettings = $false
     BarTitle = ''; BarSubtitle = ''; BusyText = ''; BarButtonsVisibility = $script:Collapsed
     CanGoBack = $false
     ShowChangesText = ''; ResetToBaseText = ''; BaseActionsVisibility = $script:Collapsed
@@ -138,6 +139,7 @@ function New-SettingRow {
         CardVisibility = $script:Visible; HeaderVisibility = $script:Collapsed
         Choices = $null; ChoiceIndex = -1; ChoiceVisibility = $script:Collapsed; Search = ''
         Effect = $null; ImpactIds = @(); ImpactItems = $null; ImpactVisibility = $script:Collapsed
+        LevelText = ''; LevelGlyph = ''; LevelVisibility = $script:Collapsed
     }
     foreach ($key in $Properties.Keys) { $defaults[$key] = $Properties[$key] }
     # Side-effect tags (tweaks	ags.psd1) show as chips on the card; their
@@ -275,8 +277,35 @@ function Get-RowNote {
         }
         return [string](T 'row.changesDefault')
     }
-    if (Test-PolicyValueEqual $default $policy.ApplyValue) { return [string](T 'row.lockOnly') }
+    if (Test-PolicyValueEqual $default $policy.ApplyValue) {
+        if ((Get-PolicyLevel -Policy $policy -Lock ([bool]$script:Vm.LockSettings)) -eq 'mandatory') { return [string](T 'row.lockOnly') }
+        return [string](T 'row.keepsDefault')
+    }
     return [string](T 'row.changesDefault')
+}
+
+# The line on a policy card saying what Brave will allow after Apply: change
+# it in Brave's own settings, or not (see Get-PolicyLevel in
+# core\Registry.ps1). It follows the lock switch on Home, so it is refreshed
+# whenever that switch or the language changes.
+function Update-RowLevels {
+    $lock = [bool]$script:Vm.LockSettings
+    foreach ($row in $script:Rows) {
+        if ($row.Kind -ne 'Policy') { continue }
+        $level = Get-PolicyLevel -Policy $row.Policy -Lock $lock
+        if ($level -ne 'mandatory') {
+            $row.LevelText = [string](T 'row.levelChangeable'); $row.LevelGlyph = [string][char]0xE70F
+        } elseif ($row.Policy.Lock) {
+            $row.LevelText = [string](T 'row.levelAlwaysLocked'); $row.LevelGlyph = [string][char]0xE72E
+        } else {
+            $row.LevelText = [string](T 'row.levelLocked'); $row.LevelGlyph = [string][char]0xE72E
+        }
+        $row.LevelVisibility = $script:Visible
+        if ($row.Supported) {
+            $row.Note = Get-RowNote $row
+            $row.NoteVisibility = ConvertTo-Visibility ([bool]$row.Note)
+        }
+    }
 }
 
 function Update-RowText {
@@ -428,6 +457,7 @@ function Get-SelectionSnapshot {
         BaseProfile = $script:BaseProfile
         ChangeCount = $script:ChangeCount
         Backup      = [bool]$script:Vm.Backup
+        Lock        = [bool]$script:Vm.LockSettings
         Policies  = $policies.ToArray()
         Flags     = $flags.ToArray()
         Tasks     = $tasks.ToArray()
@@ -459,6 +489,7 @@ function Get-SelectionState {
     $state['O:ntp']     = if ($o.NtpEnabled)     { "1|$($o.DestinationId)|$($o.NtpCustomUrl)" } else { '0' }
     $state['O:home']    = if ($o.HomeEnabled)    { "1|$($o.HomeDestinationId)|$($o.HomeCustomUrl)" } else { '0' }
     $state['O:startup'] = if ($o.StartupEnabled) { "1|$($o.StartupModeId)|$($o.StartupUrls)" } else { '0' }
+    $state['L:lock'] = [string][bool]$script:Vm.LockSettings
     return $state
 }
 
@@ -477,15 +508,22 @@ function Set-Baseline {
     }
 }
 
+# Files counts the pending changes that write Brave's own files (flags, and
+# the prefs of rows that stay changeable in Brave), which need Brave closed.
 function Get-PendingCounts {
     $current = Get-SelectionState
-    $main = 0; $hosts = 0; $flags = 0
+    $main = 0; $hosts = 0; $flags = 0; $files = 0
     foreach ($key in $current.Keys) {
         if ($script:Baseline[$key] -eq $current[$key]) { continue }
         if ($key.StartsWith('H:')) { $hosts++ } else { $main++ }
-        if ($key.StartsWith('F:')) { $flags++ }
+        if ($key.StartsWith('F:')) { $flags++; $files++ }
+        elseif ($key -eq 'L:lock') { $files++ }
+        elseif ($key.StartsWith('P:')) {
+            $policy = $script:PolicyByName[$key.Substring(2)]
+            if ($policy -and -not $policy.Lock) { $files++ }
+        }
     }
-    return @{ Main = $main; Hosts = $hosts; Flags = $flags }
+    return @{ Main = $main; Hosts = $hosts; Flags = $flags; Files = $files }
 }
 
 # ---- Summary ---------------------------------------------------------------------------
@@ -704,6 +742,7 @@ function Set-PresetSelection {
 function Update-ModelText {
     $vm = $script:Vm
     foreach ($row in $script:Rows) { Update-RowText $row }
+    Update-RowLevels
     foreach ($list in $script:PageRows.Values) {
         foreach ($row in $list) { if ($row.Kind -eq 'Header') { Update-RowText $row } }
     }

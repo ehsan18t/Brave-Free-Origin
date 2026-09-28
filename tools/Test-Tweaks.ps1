@@ -78,6 +78,7 @@ if ($script:StartupError) {
 }
 . (Join-Path $AppRoot 'src\core\SearchStartup.ps1')
 . (Join-Path $AppRoot 'src\core\Presets.ps1')
+. (Join-Path $AppRoot 'src\core\Prefs.ps1')
 
 # ---- Tags --------------------------------------------------------------------
 # The loader already rejects unknown tags; here every tag needs its wording.
@@ -90,7 +91,8 @@ foreach ($id in $script:ImpactIds) {
 # ---- Policies ----------------------------------------------------------------
 $knownData = Import-PowerShellDataFile -LiteralPath (Join-Path $AppRoot 'tools\known-policies.psd1')
 $known = $knownData.Policies
-$allowedFields = @('Name', 'Type', 'ApplyValue', 'BraveDefault', 'MinChromium', 'MaxChromium', 'Choices', 'LegacyNames', 'Effect', 'Impacts')
+$allowedFields = @('Name', 'Type', 'ApplyValue', 'BraveDefault', 'MinChromium', 'MaxChromium', 'Choices', 'LegacyNames', 'Effect', 'Impacts', 'Lock', 'PrefOnly', 'Prefs')
+$prefOwners = @{}
 $seen = @{}
 $policyCount = 0
 foreach ($cat in $script:Policies.Keys) {
@@ -114,6 +116,17 @@ foreach ($cat in $script:Policies.Keys) {
         if ($p.Choices) {
             foreach ($choiceId in $p.Choices.Keys) { Test-Key "policy.$($p.Name).choice.$choiceId" "Choice '$choiceId' of '$($p.Name)'" }
             if (@($p.Choices.Values) -notcontains $p.ApplyValue) { Add-Failure "${where}: ApplyValue is not one of its Choices." }
+        }
+        # Every value the row can write must turn into each of its Brave
+        # prefs, and a pref belongs to one row only.
+        $values = if ($p.Choices) { @($p.Choices.Values) } else { , $p.ApplyValue }
+        foreach ($pref in $p.Prefs) {
+            if ($prefOwners.ContainsKey($pref.Key)) { Add-Failure "${where}: pref $($pref.Path -join '.') is also written by '$($prefOwners[$pref.Key])'." }
+            $prefOwners[$pref.Key] = $p.Name
+            foreach ($value in $values) {
+                try { [void](ConvertTo-PrefValueJson -Pref $pref -PolicyValue $value) }
+                catch { Add-Failure "${where}: value $(Format-PolicyValueText $value) has no pref value for $($pref.Path -join '.'): $($_.Exception.Message)" }
+            }
         }
     }
 }

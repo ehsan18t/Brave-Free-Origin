@@ -125,6 +125,19 @@ function Resolve-Destination {
     }
 }
 
+# Removes the override values from one key: Search clears the search engine,
+# homepage and startup values, Ntp the new tab page. Apply calls it for the
+# key the values must not be in (see Get-OverrideLevel in core\Registry.ps1).
+function Clear-OverrideValues {
+    param([string]$Path, [switch]$Search, [switch]$Ntp)
+    if (-not (Test-Path $Path)) { return }
+    if ($Search) {
+        foreach ($n in @($script:SearchOverrideValueNames + $script:HomeOverrideValueNames + 'RestoreOnStartup')) { [void](Remove-PolicyValue -Path $Path -Name $n) }
+        [void](Remove-PolicyList -Path $Path -Name 'RestoreOnStartupURLs')
+    }
+    if ($Ntp) { [void](Remove-PolicyValue -Path $Path -Name 'NewTabPageLocation') }
+}
+
 # The Write-*Override functions write exactly what the matching
 # Get-Desired*Override computes, the same table Preview reports, so the two
 # cannot drift apart. Each clears its values first so unticking + Apply truly

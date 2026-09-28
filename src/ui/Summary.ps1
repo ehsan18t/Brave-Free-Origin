@@ -46,6 +46,7 @@ function Get-PlanSummary {
     $impacts = [ordered]@{}
     $changes = 0
     $keeps = 0
+    $moves = 0
 
     # Files one enforced change under its Effect and notes its Impacts.
     $enforce = {
@@ -77,6 +78,8 @@ function Get-PlanSummary {
                 $changes++
                 $backToDefault.Add((New-SummaryEntry -Kind Item -Text $title -Detail (T 'preview.cleared' @($p.Name, (Format-PolicyValue $row $p.Current)))))
             }
+            # Same value, other key: the lock switch changed.
+            'MOVE' { $changes++; $moves++ }
         }
     }
     foreach ($r in $Plan.Retired) {
@@ -146,8 +149,19 @@ function Get-PlanSummary {
         } elseif (@('Custom', 'CurrentState') -contains $Selection.Profile) { T 'preview.yourSelection' } else { Get-PresetName $Selection.Profile }
         $entries.Add((New-SummaryEntry -Kind Lead -Text (T 'preview.lead' @($mode, $changes, $keeps))))
     }
-    if (@($Plan.FlagsBlocked).Count -gt 0 -and @($Plan.Flags | Where-Object { $_.Verb -ne 'KEEP' }).Count -gt 0) {
+    $fileChanges = @($Plan.Flags | Where-Object { $_.Verb -ne 'KEEP' }).Count + @($Plan.Prefs | Where-Object { $_.Verb -eq 'SET' -or $_.Verb -eq 'RESET' }).Count
+    if (@($Plan.FlagsBlocked).Count -gt 0 -and $fileChanges -gt 0) {
         $entries.Add((New-SummaryEntry -Kind Note -Text (T 'preview.flagsBlocked' @((@($Plan.FlagsBlocked) -join ', '))) -Tone caution))
+    }
+    if ($moves -gt 0) {
+        $key = if ($Plan.Lock) { 'preview.movedLocked' } else { 'preview.movedChangeable' }
+        $entries.Add((New-SummaryEntry -Kind Note -Text (T $key @($moves))))
+    }
+    # Settings Brave keeps a signed value for: a recommendation cannot beat
+    # a value the user already picked in Brave.
+    foreach ($w in @($Plan.Protected)) {
+        $name = if ($w.Kind -eq 'Override') { T "searchTab.sec$($w.Name)" } else { $r = $script:RowIndex["Policy:$($w.Name)"]; if ($r) { $r.Title } else { $w.Name } }
+        $entries.Add((New-SummaryEntry -Kind Note -Text (T 'preview.protected' @($name)) -Detail (T 'preview.protectedDetail') -Tone caution))
     }
 
     if ($impacts.Count -gt 0) {
@@ -178,6 +192,7 @@ function Get-PlanSummary {
         $entries.Add((New-SummaryEntry -Kind Section -Text '' -Glyph 0))
         if ($Selection.Backup) { $entries.Add((New-SummaryEntry -Kind Note -Text (T 'preview.noteBackup'))) }
         else { $entries.Add((New-SummaryEntry -Kind Note -Text (T 'preview.noteNoBackup') -Tone caution)) }
+        $entries.Add((New-SummaryEntry -Kind Note -Text (T $(if ($Plan.Lock) { 'preview.noteLocked' } else { 'preview.noteChangeable' }))))
         $entries.Add((New-SummaryEntry -Kind Note -Text (T 'preview.noteRestart')))
     }
     if ((Get-PendingCounts).Hosts -gt 0) { $entries.Add((New-SummaryEntry -Kind Note -Text (T 'preview.noteHosts'))) }

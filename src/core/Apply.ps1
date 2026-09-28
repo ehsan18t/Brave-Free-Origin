@@ -75,9 +75,12 @@ function Remove-LegacyPolicyKeys {
 }
 
 # Writes the selection: policies first, then the search / new tab / homepage
-# / startup overrides, then flags, scheduled tasks and services. Hosts blocks
-# and scriptlets are not touched; their own pages apply them. WriteFlags is
-# $false when the user chose to skip flags because Brave is running.
+# / startup overrides, then flags and Brave's own settings files, scheduled
+# tasks and services. Hosts blocks and scriptlets are not touched; their own
+# pages apply them. Each policy goes to the key its level picks (see
+# Get-PolicyLevel in core\Registry.ps1) and is removed from the other one.
+# WriteFlags is $false when the user chose to skip Brave's files (flags and
+# settings) because Brave is running.
 # Returns the counts for the confirmation message and saves the record the
 # drift check compares against.
 function Invoke-Apply {
@@ -86,32 +89,47 @@ function Invoke-Apply {
     # A failed backup stops the apply: nothing is written that could not be undone.
     if ($Selection.Backup) { [void](New-BfoBackup -Kind auto -Reason 'apply') }
 
-    $path = $script:PolicyPath
+    $lock = [bool]$Selection.Lock
+    $previous = Read-AppliedRecord
+    # A row written only as Brave's own pref has no policy behind it. While
+    # those prefs cannot be written (Brave running, or never started), such a
+    # row stays a locked policy so it keeps working; the next Apply with
+    # Brave closed moves it.
+    $prefsWritable = Test-PrefsWritable -WriteFiles $WriteFlags
+    $keptLocked = 0
     $applied = 0
     $cleared = 0
-    Write-BfoLog "--- Applying to $path ---"
+    Write-BfoLog "--- Applying to $script:PolicyPath ($(if ($lock) { 'locked in Brave' } else { 'changeable in Brave' })) ---"
     foreach ($p in $Selection.Policies) {
-        if ($p.Checked) {
-            try {
-                Set-Policy -Path $path -Name $p.Name -Type $p.Type -Value $p.Value
-                Write-BfoLog "SET $($p.Name) = $(Format-PolicyValueText $p.Value)" 'OK'
-                $applied++
-            } catch {
-                Write-BfoLog "FAIL $($p.Name): $_" 'ERR'
-            }
-        } else {
-            try {
-                if (Remove-Policy -Path $path -Name $p.Name -Type $p.Type) {
+        $policy = $script:PolicyByName[$p.Name]
+        $level = Get-PolicyLevel -Policy $policy -Lock $lock
+        if ($level -eq 'pref' -and -not $prefsWritable) {
+            $level = 'mandatory'
+            if ($p.Checked) { $keptLocked++ }
+        }
+        $target = if ($p.Checked) { Get-LevelPath $level } else { $null }
+        try {
+            # Out of every key it must not be in, which moves a value when
+            # the lock switch changed.
+            foreach ($key in @($script:PolicyPath, $script:RecommendedPath)) {
+                if ($key -eq $target) { continue }
+                if ((Remove-Policy -Path $key -Name $p.Name -Type $p.Type) -and -not $p.Checked) {
                     Write-BfoLog "CLEARED $($p.Name)" 'OK'
                     $cleared++
                 }
-            } catch {
-                Write-BfoLog "FAIL clearing $($p.Name): $_" 'ERR'
             }
+            if ($target) {
+                Set-Policy -Path $target -Name $p.Name -Type $p.Type -Value $p.Value
+                Write-BfoLog "SET $($p.Name) = $(Format-PolicyValueText $p.Value) ($level)" 'OK'
+            }
+            if ($p.Checked) { $applied++ }
+        } catch {
+            Write-BfoLog "FAIL $($p.Name): $_" 'ERR'
         }
     }
+    if ($keptLocked -gt 0) { Write-BfoLog "Brave's settings files cannot be written now: $keptLocked Shields and permission default(s) stay locked until the next Apply with Brave closed." 'WARN' }
     foreach ($name in $script:RetiredPolicies.Keys) {
-        if (Remove-PolicyValue -Path $path -Name $name) {
+        if (Remove-PolicyEverywhere -Name $name -Type 'DWORD') {
             Write-BfoLog "CLEARED retired policy $name ($($script:RetiredPolicies[$name].Reason))" 'OK'
             $cleared++
         }
@@ -120,12 +138,18 @@ function Invoke-Apply {
 
     # Each override helper clears its own values first, so unticking + Apply
     # truly removes them, and creates the policy key only when it has a value
-    # to write.
+    # to write. The other key is cleared first, for the same reason.
     $overrides = $Selection.Overrides
-    try { [void](Write-SearchEngineOverride -Path $path -Overrides $overrides) } catch { Write-BfoLog "Search override: $_" 'ERR' }
-    try { [void](Write-NtpOverride          -Path $path -Overrides $overrides) } catch { Write-BfoLog "NTP override: $_" 'ERR' }
-    try { [void](Write-HomeOverride         -Path $path -Overrides $overrides) } catch { Write-BfoLog "Homepage override: $_" 'ERR' }
-    try { [void](Write-StartupOverride      -Path $path -Overrides $overrides) } catch { Write-BfoLog "Startup override: $_" 'ERR' }
+    $searchPath = Get-LevelPath (Get-OverrideLevel -Name 'DefaultSearchProviderEnabled' -Lock $lock)
+    $ntpPath = Get-LevelPath (Get-OverrideLevel -Name 'NewTabPageLocation' -Lock $lock)
+    foreach ($key in @($script:PolicyPath, $script:RecommendedPath)) {
+        try { Clear-OverrideValues -Path $key -Search:($key -ne $searchPath) -Ntp:($key -ne $ntpPath) } catch { Write-BfoLog "Clearing overrides under ${key}: $_" 'ERR' }
+    }
+    try { [void](Write-SearchEngineOverride -Path $searchPath -Overrides $overrides) } catch { Write-BfoLog "Search override: $_" 'ERR' }
+    try { [void](Write-NtpOverride          -Path $ntpPath    -Overrides $overrides) } catch { Write-BfoLog "NTP override: $_" 'ERR' }
+    try { [void](Write-HomeOverride         -Path $searchPath -Overrides $overrides) } catch { Write-BfoLog "Homepage override: $_" 'ERR' }
+    try { [void](Write-StartupOverride      -Path $searchPath -Overrides $overrides) } catch { Write-BfoLog "Startup override: $_" 'ERR' }
+    Remove-EmptyRecommendedKey
 
     $flagResults = @()
     if ($WriteFlags) {
@@ -133,6 +157,14 @@ function Invoke-Apply {
     } else {
         Write-BfoLog 'Flags skipped: Brave is running.' 'WARN'
         $flagResults = @(Get-FlagChannels | ForEach-Object { [pscustomobject]@{ Channel = $_; Status = 'running' } })
+    }
+    # Brave's own prefs, for the rows that stay changeable in Brave.
+    try {
+        $prefs = Invoke-PrefsApply -Selection $Selection -Previous $previous -WriteFiles $WriteFlags
+    } catch {
+        Write-BfoLog "Brave settings: $_" 'ERR'
+        $kept = if ($previous -and $previous.prefs) { $previous.prefs } else { [ordered]@{} }
+        $prefs = [pscustomobject]@{ Results = @([pscustomobject]@{ Channel = 'all'; Status = 'failed' }); Record = $kept; Desired = @(); Fresh = @(@(Get-DesiredPrefs -Selection $Selection)); Stale = @() }
     }
 
     foreach ($t in $Selection.Tasks) {
@@ -154,17 +186,44 @@ function Invoke-Apply {
     }
 
     try {
-        Save-AppliedRecord (New-AppliedRecord -Selection $Selection -Previous (Read-AppliedRecord) -FlagResults $flagResults -BraveVersion (Get-BraveVersion))
+        Save-AppliedRecord (New-AppliedRecord -Selection $Selection -Previous $previous -FlagResults $flagResults -BraveVersion (Get-BraveVersion) -Prefs $prefs.Record -PrefsWritable $prefsWritable)
     } catch {
         Write-BfoLog "Could not save the record of this apply: $_" 'WARN'
     }
 
-    Write-BfoLog "Done. Applied $applied policies, cleared $cleared. Restart Brave to take effect." 'DONE'
+    Write-BfoLog "Done. Applied $applied settings, cleared $cleared. Restart Brave to take effect." 'DONE'
 
+    # The rows whose Brave settings could not be written stay pending, like
+    # flags, so the next Apply finishes them.
+    $prefsSkipped = @($prefs.Results | Where-Object { $_.Status -ne 'written' -and $_.Status -ne 'unchanged' } | ForEach-Object { $_.Channel })
+    $prefRows = if ($prefsSkipped.Count -gt 0) { @(@($prefs.Fresh) + @($prefs.Stale) | ForEach-Object { $_.Name } | Select-Object -Unique) } else { @() }
     return [pscustomobject]@{
         Applied      = $applied
         Cleared      = $cleared
         FlagsSkipped = @($flagResults | Where-Object { $_.Status -eq 'running' -or $_.Status -eq 'failed' } | ForEach-Object { $_.Channel })
+        PrefsSkipped = $(if ($prefRows.Count -gt 0) { $prefsSkipped } else { @() })
+        PrefRows     = $prefRows
+    }
+}
+
+# $true when Apply can write Brave's own settings files right now: allowed
+# (WriteFiles), and at least one channel has run and none is running.
+function Test-PrefsWritable {
+    param([bool]$WriteFiles)
+    if (-not $WriteFiles) { return $false }
+    $channels = @(Get-FlagChannels)
+    if ($channels.Count -eq 0) { return $false }
+    return (@($channels | Where-Object { @(Get-ChannelProcesses $_).Count -gt 0 }).Count -eq 0)
+}
+
+# Deletes the Recommended subkey once nothing is left in it, so a machine the
+# app no longer changes carries no empty key.
+function Remove-EmptyRecommendedKey {
+    $key = $script:RecommendedPath
+    if (-not (Test-Path $key)) { return }
+    $item = Get-Item -Path $key -ErrorAction SilentlyContinue
+    if ($item -and $item.ValueCount -eq 0 -and $item.SubKeyCount -eq 0) {
+        try { Remove-Item -Path $key -Force -ErrorAction Stop } catch { Write-Verbose "Could not remove the empty $key." }
     }
 }
 
@@ -199,6 +258,15 @@ function Invoke-FullRestore {
 
     [void](Invoke-FlagsApply -Flags @())
 
+    # Brave's own settings the app wrote go back to Brave's defaults, unless
+    # the user has changed them in Brave since.
+    $record = Read-AppliedRecord
+    $prefsLeft = $null
+    try {
+        $reset = Invoke-PrefsApply -Selection ([pscustomobject]@{ Lock = $false; Policies = @() }) -Previous $record
+        if ($reset.Record.Count -gt 0) { $prefsLeft = $reset.Record }
+    } catch { Write-BfoLog "Full restore Brave settings: $_" 'ERR' }
+
     foreach ($t in $script:ScheduledTasks) {
         try {
             Enable-BraveTask -Name $t.Name
@@ -215,7 +283,17 @@ function Invoke-FullRestore {
         }
     }
 
-    try { Remove-AppliedRecord } catch { Write-BfoLog "Could not remove the record of the last apply: $_" 'WARN' }
+    try {
+        if ($prefsLeft) {
+            # A running Brave kept some settings from being reset: remember
+            # only those, so the next Apply or restore can finish the job.
+            Save-AppliedRecord ([ordered]@{ version = 1; appVersion = $script:AppVersion; savedAt = (Get-Date -Format 's'); mode = 'Default'
+                policies = @{}; overrides = @{}; tasks = @(); services = @(); flags = @{}; hosts = @(); repeats = @{}; lock = $false; prefs = $prefsLeft })
+            Write-BfoLog 'Brave is running: some of its settings were not reset. Close it and run the full restore again.' 'WARN'
+        } else {
+            Remove-AppliedRecord
+        }
+    } catch { Write-BfoLog "Could not update the record of the last apply: $_" 'WARN' }
 
     Write-BfoLog 'Full restore completed. Restart Brave to see stock behavior.' 'DONE'
 }

@@ -14,6 +14,8 @@
 #   BaseProfile string    the mode a Custom selection started from, or $null
 #   ChangeCount int       how many settings differ from BaseProfile
 #   Backup     bool       export a .reg backup before writing
+#   Lock       bool       lock every setting in Brave (mandatory policies
+#                         only); see Get-PolicyLevel in core\Registry.ps1
 #   Policies   one entry per policy, in display order:
 #              Name, Type, Value (what Apply writes), Checked, HasChoices
 #   Flags      Name, Entry (name@option), Checked
@@ -108,8 +110,29 @@ function Test-BraveServiceDisabled {
 }
 
 function Get-BfoMachineState {
-    $path = $script:PolicyPath
-    $values = Get-PolicyValueTable -Path $path
+    # Both policy keys as one table, name -> value: a setting is applied
+    # whether it is locked or only recommended. Mandatory wins, as in Brave.
+    $tables = Get-PolicyValueTables
+    $values = @{}
+    foreach ($k in $tables.Recommended.Keys) { $values[$k] = $tables.Recommended[$k] }
+    foreach ($k in $tables.Mandatory.Keys) { $values[$k] = $tables.Mandatory[$k] }
+    $record = $null
+    try { $record = Read-AppliedRecord } catch { Write-Verbose "No usable record of the last apply: $_" }
+    # A row written only as Brave's own pref has no policy to read: it counts
+    # as applied while Brave still holds every value the app wrote for it.
+    if ($record -and $record.policies -and $record.prefs) {
+        $recorded = ConvertTo-RecordTable $record.prefs
+        $keys = @(foreach ($entry in $recorded.Values) { $entry.PSObject.Properties.Name })
+        $current = Read-PrefKeys -Keys $keys -Target (Get-PrefReadTarget)
+        foreach ($p in $record.policies.PSObject.Properties) {
+            if ((Get-RecordLevel $p.Value) -ne 'pref' -or -not $recorded.Contains($p.Name)) { continue }
+            $same = $true
+            foreach ($entry in $recorded[$p.Name].PSObject.Properties) {
+                if (-not (Test-PrefJsonEqual $current[$entry.Name] ([string]$entry.Value))) { $same = $false }
+            }
+            if ($same) { $values[$p.Name] = $p.Value.value }
+        }
+    }
 
     $tasks = @{}
     foreach ($t in $script:ScheduledTasks) {
@@ -123,7 +146,6 @@ function Get-BfoMachineState {
     # selection after it when this PC no longer matches any mode exactly.
     $lastApplied = $null
     try {
-        $record = Read-AppliedRecord
         if ($record) {
             $mode = Resolve-PresetId "$($record.mode)"
             if ($mode -eq 'Custom' -and $record.baseMode) { $mode = Resolve-PresetId "$($record.baseMode)" }
@@ -131,14 +153,38 @@ function Get-BfoMachineState {
         }
     } catch { Write-Verbose "No usable record of the last apply: $_" }
 
+    # Lock is what the switch on Home shows: the choice of the last Apply, and
+    # off (settings stay changeable in Brave) when there is none. MachineLock
+    # is what this PC really has. They differ after an update from a version
+    # that locked everything: the window then shows the switch off with one
+    # change pending, and the next Apply moves those settings.
+    # A setting that could stay changeable but sits in the policy key also
+    # counts as locked: left there by an earlier version, or by an Apply
+    # while Brave was running.
+    $hasLock = $record -and $record.PSObject.Properties['lock']
+    $lock = [bool]($hasLock -and $record.lock)
+    $machineLock = $lock
+    if (-not $lock) {
+        foreach ($name in $tables.Mandatory.Keys) {
+            $policy = $script:PolicyByName[$name]
+            if ($policy -and -not $policy.Lock) { $machineLock = $true; break }
+        }
+        foreach ($name in @('DefaultSearchProviderEnabled', 'HomepageLocation', 'RestoreOnStartup')) {
+            if ($tables.Mandatory.ContainsKey($name)) { $machineLock = $true }
+        }
+    }
+    # The startup URL list sits next to RestoreOnStartup, in either key.
+    $startupKey = if ($tables.Mandatory.ContainsKey('RestoreOnStartup')) { $script:PolicyPath } else { $script:RecommendedPath }
     return [pscustomobject]@{
         LastApplied = $lastApplied
+        Lock        = $lock
+        MachineLock = $machineLock
         Values      = $values
         Tasks       = $tasks
         Services    = $services
         Flags       = @(Get-MachineFlagEntries)
         Hosts       = @(Get-HostsCurrentDomains)
-        StartupUrls = @(Get-RegistryNumberedValues -Path (Join-Path $path 'RestoreOnStartupURLs'))
+        StartupUrls = @(Get-RegistryNumberedValues -Path (Join-Path $startupKey 'RestoreOnStartupURLs'))
     }
 }
 
@@ -158,6 +204,7 @@ function ConvertTo-BfoConfig {
         exported      = (Get-Date -Format 's')
         profile       = $Selection.Profile
         baseProfile   = $Selection.BaseProfile
+        lock          = [bool]$Selection.Lock
         policies      = [ordered]@{}
         policyValues  = [ordered]@{}
         flags         = [ordered]@{}

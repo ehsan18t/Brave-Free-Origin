@@ -58,6 +58,66 @@ function Remove-Policy {
     return (Remove-PolicyValue -Path $Path -Name $Name)
 }
 
+# ---- Levels -----------------------------------------------------------------------
+# Where a ticked policy goes. Lock is the "Lock settings so they can't be
+# changed in Brave" switch.
+#   mandatory    the policy key: Brave applies it and greys the setting out
+#   recommended  the Recommended subkey: Brave starts from it, the user can
+#                change it, and Apply also writes Brave's own pref so the
+#                value takes effect over one the user stored earlier
+#   pref         no policy at all, only Brave's own pref: for settings Brave
+#                would lock even from the Recommended subkey
+# A row marked Lock (no toggle anywhere in Brave, or a feature kill switch
+# that Brave only obeys as mandatory) is always mandatory.
+function Get-PolicyLevel {
+    param($Policy, [bool]$Lock)
+    if ($Lock -or $Policy.Lock) { return 'mandatory' }
+    if ($Policy.PrefOnly) { return 'pref' }
+    return 'recommended'
+}
+
+# The search, homepage and startup values follow the switch too. The new tab
+# page URL has no setting in Brave, so it stays mandatory.
+function Get-OverrideLevel {
+    param([string]$Name, [bool]$Lock)
+    if ($Lock -or $Name -eq 'NewTabPageLocation') { return 'mandatory' }
+    return 'recommended'
+}
+
+function Get-LevelPath {
+    param([string]$Level)
+    switch ($Level) {
+        'mandatory'   { return $script:PolicyPath }
+        'recommended' { return $script:RecommendedPath }
+    }
+    return $null
+}
+
+# Both policy keys in one read: Mandatory and Recommended, name -> value each.
+function Get-PolicyValueTables {
+    return [pscustomobject]@{
+        Mandatory   = (Get-PolicyValueTable -Path $script:PolicyPath)
+        Recommended = (Get-PolicyValueTable -Path $script:RecommendedPath)
+    }
+}
+
+# One policy across both keys: Exists, Value and Level ('mandatory' when it is
+# in the policy key, which is what Brave applies, else 'recommended').
+function Get-LevelValueState {
+    param($Tables, [string]$Name)
+    if ($Tables.Mandatory.ContainsKey($Name)) { return [pscustomobject]@{ Exists = $true; Value = $Tables.Mandatory[$Name]; Level = 'mandatory' } }
+    if ($Tables.Recommended.ContainsKey($Name)) { return [pscustomobject]@{ Exists = $true; Value = $Tables.Recommended[$Name]; Level = 'recommended' } }
+    return [pscustomobject]@{ Exists = $false; Value = $null; Level = $null }
+}
+
+# Removes a policy from both keys. Returns $true when there was one.
+function Remove-PolicyEverywhere {
+    param([string]$Name, [string]$Type)
+    $a = Remove-Policy -Path $script:PolicyPath -Name $Name -Type $Type
+    $b = Remove-Policy -Path $script:RecommendedPath -Name $Name -Type $Type
+    return ($a -or $b)
+}
+
 # A value as reports show it: a list as its items joined by commas.
 function Format-PolicyValueText {
     param($Value)

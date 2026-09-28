@@ -12,8 +12,10 @@
 #                       hand; Restore only puts the flag list back
 #   backup.json         when and why it was taken, whether it is pinned, and
 #                       the rest of the state: the app's hosts block, each
-#                       channel's flag list, the state of every Brave update
-#                       task and service, and the drift record
+#                       channel's flag list, every Brave setting the app can
+#                       write (per profile and Local State), the state of
+#                       every Brave update task and service, and the drift
+#                       record
 # Automatic backups are taken before anything that writes (see the callers)
 # and only the newest $script:BackupKeep are kept; manual and pinned backups
 # are never deleted automatically.
@@ -42,6 +44,49 @@ function Read-BackupManifest {
 }
 
 # The state of Brave's update tasks and services, by real Windows name.
+# Every Brave setting the app can write, as each profile and Local State holds
+# it now: "<channel>|<profile>" (empty profile for Local State) -> pref key ->
+# raw JSON, or $null when the pref is not set.
+function Get-PrefsSnapshot {
+    $keys = @{ Profile = @(); LocalState = @() }
+    foreach ($cat in $script:Policies.Keys) {
+        foreach ($policy in $script:Policies[$cat]) {
+            foreach ($pref in $policy.Prefs) { if (-not $pref.Protected) { $keys[$pref.File] += $pref.Key } }
+        }
+    }
+    $snapshot = [ordered]@{}
+    foreach ($channel in @(Get-FlagChannels)) {
+        $targets = @([pscustomobject]@{ Id = "$channel|"; Path = $script:Channels[$channel].LocalState; Keys = $keys.LocalState })
+        $targets += @(Get-ChannelProfiles $channel | ForEach-Object { [pscustomobject]@{ Id = "$channel|$($_.Name)"; Path = $_.Preferences; Keys = $keys.Profile } })
+        foreach ($t in $targets) {
+            try { $text = [System.IO.File]::ReadAllText($t.Path, $script:Utf8NoBom) } catch { continue }
+            $values = [ordered]@{}
+            foreach ($key in ($t.Keys | Select-Object -Unique)) {
+                try { $values[$key] = Get-JsonPathText -Text $text -Path (ConvertFrom-PrefKey $key).Path } catch { $values[$key] = $null }
+            }
+            $snapshot[$t.Id] = $values
+        }
+    }
+    return $snapshot
+}
+
+# Puts one snapshot entry (see Get-PrefsSnapshot) back into its file.
+function Restore-PrefsTarget {
+    param([string]$Channel, [string]$ProfileName, $Values)
+    $path = if ($ProfileName) { Join-Path (Join-Path (Split-Path -Parent $script:Channels[$Channel].LocalState) $ProfileName) 'Preferences' } else { $script:Channels[$Channel].LocalState }
+    if (-not (Test-Path -LiteralPath $path)) { return }
+    $text = [System.IO.File]::ReadAllText($path, $script:Utf8NoBom)
+    $edits = @()
+    foreach ($entry in $Values.PSObject.Properties) {
+        $spot = ConvertFrom-PrefKey $entry.Name
+        $now = Get-JsonPathText -Text $text -Path $spot.Path
+        $was = if ($null -eq $entry.Value) { $null } else { [string]$entry.Value }
+        if ($null -eq $was) { if ($null -ne $now) { $edits += @{ Path = $spot.Path; Delete = $true } } }
+        elseif ($now -cne $was) { $edits += @{ Path = $spot.Path; Json = $was } }
+    }
+    if ($edits.Count -gt 0) { [void](Update-PrefFile -Path $path -Edits $edits) }
+}
+
 function Get-SystemSnapshot {
     $tasks = [ordered]@{}
     foreach ($t in $script:ScheduledTasks) {
@@ -88,6 +133,7 @@ function New-BfoBackup {
     }
 
     $system = Get-SystemSnapshot
+    $prefs = Get-PrefsSnapshot
     $hosts = [string[]]@(Get-HostsCurrentDomains)
     $drift = Read-AppliedRecord
     $flagCount = 0
@@ -104,6 +150,7 @@ function New-BfoBackup {
         counts     = [ordered]@{ policies = $policyCount; flags = $flagCount; hosts = $hosts.Count }
         hosts      = $hosts
         flags      = $flags
+        prefs      = $prefs
         tasks      = $system.Tasks
         services   = $system.Services
         drift      = $drift
@@ -162,12 +209,13 @@ function Remove-BfoBackup {
     Write-BfoLog "Backup deleted: $Id" 'OK'
 }
 
-# The channels a restore would write flags to and that are running now, so
-# the window can ask before starting.
+# The channels a restore would write flags or settings to and that are
+# running now, so the window can ask before starting.
 function Get-BackupRunningChannels {
     param([string]$Id)
     $m = Read-BackupManifest -Folder (Get-BackupFolder $Id)
     $channels = @(if ($m.flags) { $m.flags.PSObject.Properties.Name })
+    if ($m.prefs) { $channels = @(@($channels) + @($m.prefs.PSObject.Properties.Name | ForEach-Object { ($_ -split '\|')[0] }) | Select-Object -Unique) }
     return @($channels | Where-Object { $script:Channels.Contains($_) -and @(Get-ChannelProcesses $_).Count -gt 0 })
 }
 
@@ -213,6 +261,24 @@ function Restore-BfoBackup {
         }
     }
 
+    # Brave's own settings the app can write, exactly as the backup had them.
+    $prefsRestored = [bool]$m.prefs
+    if ($m.prefs) {
+        foreach ($p in $m.prefs.PSObject.Properties) {
+            $channel, $profileName = $p.Name -split '\|', 2
+            if (-not $script:Channels.Contains($channel)) { continue }
+            if (-not $WriteFlags -or @(Get-ChannelProcesses $channel).Count -gt 0) { $prefsRestored = $false; if ($skipped -notcontains $channel) { $skipped += $channel }; continue }
+            try {
+                Restore-PrefsTarget -Channel $channel -ProfileName $profileName -Values $p.Value
+            } catch {
+                $prefsRestored = $false
+                Write-BfoLog "[$channel] Brave settings: $_" 'ERR'
+                if ($skipped -notcontains $channel) { $skipped += $channel }
+            }
+        }
+        if ($prefsRestored) { Write-BfoLog "Brave settings restored from backup $Id" 'OK' }
+    }
+
     if ($m.tasks) {
         $now = @(Get-RootTaskList)
         foreach ($p in $m.tasks.PSObject.Properties) {
@@ -239,7 +305,19 @@ function Restore-BfoBackup {
 
     # The drift record goes back too, so the Home warning matches.
     try {
-        if ($m.drift) { Save-AppliedRecord $m.drift } else { Remove-AppliedRecord }
+        # Brave's settings that were not put back (an older backup without
+        # them, or Brave running) are still the app's to undo: keep them in
+        # the record so unticking or the full restore can.
+        $current = Read-AppliedRecord
+        $keepPrefs = (-not $prefsRestored) -and $current -and $current.prefs -and @($current.prefs.PSObject.Properties).Count -gt 0
+        if ($m.drift) {
+            $restored = ConvertTo-RecordTable $m.drift
+            if ($keepPrefs) { $restored['prefs'] = $current.prefs }
+            Save-AppliedRecord $restored
+        } elseif ($keepPrefs) {
+            Save-AppliedRecord ([ordered]@{ version = 1; appVersion = $script:AppVersion; savedAt = (Get-Date -Format 's'); mode = 'Custom'; lock = $false
+                policies = @{}; overrides = @{}; tasks = @(); services = @(); flags = @{}; hosts = @(); repeats = @{}; prefs = $current.prefs })
+        } else { Remove-AppliedRecord }
     } catch { Write-BfoLog "Could not restore the record of the last apply: $_" 'WARN' }
 
     Write-BfoLog "Restore of backup $Id completed. Restart Brave to see it." 'DONE'

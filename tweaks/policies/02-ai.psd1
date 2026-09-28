@@ -6,7 +6,7 @@
 @{
     Category = 'aiGenAi'
     Policies = @(
-        @{ Name = 'BraveAIChatEnabled';  Type = 'DWORD'; ApplyValue = 0; BraveDefault = 1; MinChromium = 121; Effect = 'feature' },
-        @{ Name = 'BraveLocalAIEnabled'; Type = 'DWORD'; ApplyValue = 0; BraveDefault = 1; MinChromium = 149; Effect = 'feature' }
+        @{ Name = 'BraveAIChatEnabled';  Type = 'DWORD'; ApplyValue = 0; BraveDefault = 1; MinChromium = 121; Effect = 'feature'; Lock = $true },
+        @{ Name = 'BraveLocalAIEnabled'; Type = 'DWORD'; ApplyValue = 0; BraveDefault = 1; MinChromium = 149; Effect = 'feature'; Lock = $true }
     )
 }

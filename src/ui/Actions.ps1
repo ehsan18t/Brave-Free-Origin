@@ -53,6 +53,7 @@ function Set-SelectionFromMachine {
         Set-HostsRowsFromDomains -Current $State.Hosts
 
         $vm = $script:Vm
+        $vm.LockSettings = [bool]$State.Lock
         $vm.SearchEnabled = ($values.ContainsKey('DefaultSearchProviderEnabled') -and $values['DefaultSearchProviderEnabled'] -eq 1)
         if ($vm.SearchEnabled -and $values.ContainsKey('DefaultSearchProviderSearchURL')) {
             $url = $values['DefaultSearchProviderSearchURL']
@@ -99,8 +100,12 @@ function Set-SelectionFromMachine {
         Pop-SuppressSelectionEvents
     }
     Update-OverrideStates
+    Update-RowLevels
     Set-ModeFromMachine -LastApplied $State.LastApplied
     Set-Baseline -Scope All
+    # Settings an earlier version locked: the switch shows off, the machine
+    # is locked, so moving them is a pending change (see Get-BfoMachineState).
+    if ([bool]$State.MachineLock -ne [bool]$State.Lock) { $script:Baseline['L:lock'] = [string][bool]$State.MachineLock }
     Update-SelectionSummary
 }
 
@@ -160,8 +165,10 @@ function Invoke-BfoPreview {
     }
 }
 
-# The flags question Apply asks: $true to write flags, $false to skip them
-# because Brave is running, $null when the user cancelled.
+# The question Apply asks when something pending lives in Brave's own files
+# (flags, and the settings of rows that stay changeable in Brave): $true to
+# write them, $false to skip them because Brave is running, $null when the
+# user cancelled.
 function Get-BfoFlagsDecision {
     param([bool]$FlagsPending)
     if (-not $FlagsPending) { return $true }
@@ -177,7 +184,7 @@ function Get-BfoFlagsDecision {
 # waiting from the import are re-applied when Brave's filter lists exist.
 function Invoke-BfoApplyEverything {
     $pending = Get-PendingCounts
-    $writeFlags = Get-BfoFlagsDecision -FlagsPending ($pending.Flags -gt 0)
+    $writeFlags = Get-BfoFlagsDecision -FlagsPending ($pending.Files -gt 0)
     if ($null -eq $writeFlags) { return }
     $selection = Get-SelectionSnapshot
     $backup = [bool]$selection.Backup
@@ -204,7 +211,14 @@ function Invoke-BfoApplyEverything {
         [pscustomobject]@{ Apply = $apply; Scriptlets = $scriptlets }
     } -OnSuccess {
         param($Result)
+        $baselineBefore = $script:Baseline.Clone()
         Set-Baseline -Scope All -State $script:ApplyState
+        # Flags and Brave's own settings skipped because Brave was running
+        # stay pending, as after a plain Apply.
+        $keep = @()
+        if (@($Result.Apply.FlagsSkipped).Count -gt 0) { $keep += @($script:ApplyState.Keys | Where-Object { $_.StartsWith('F:') }) }
+        if (@($Result.Apply.PrefsSkipped).Count -gt 0) { $keep += @(@($Result.Apply.PrefRows | ForEach-Object { "P:$_" }) + 'L:lock') }
+        foreach ($key in $keep) { if ($baselineBefore.ContainsKey($key)) { $script:Baseline[$key] = $baselineBefore[$key] } }
         if ($Result.Scriptlets -ge 0) { Set-PendingScriptletRules @() }
         Update-SelectionSummary
         $message = if ($Result.Scriptlets -lt 0) { T 'import.doneWaiting' @(@($script:PendingScriptletRules).Count) } else { T 'import.doneText' }
@@ -217,7 +231,7 @@ function Invoke-BfoApplyEverything {
 # changes are pending and a channel is running, ask before applying: the rest
 # can go ahead now and the flags on the next Apply.
 function Invoke-BfoApply {
-    $writeFlags = Get-BfoFlagsDecision -FlagsPending ((Get-PendingCounts).Flags -gt 0)
+    $writeFlags = Get-BfoFlagsDecision -FlagsPending ((Get-PendingCounts).Files -gt 0)
     if ($null -eq $writeFlags) { return }
     $script:ApplyLabel = [string]$script:Vm.ModeName
     $script:ApplyState = Get-SelectionState
@@ -233,10 +247,18 @@ function Invoke-BfoApply {
                 $script:Baseline[$key] = $script:ApplyBaselineBefore[$key]
             }
         }
+        if (@($Result.PrefsSkipped).Count -gt 0) {
+            # Brave's own settings were not written either: those rows, and a
+            # lock switch change, stay pending so the next Apply finishes them.
+            foreach ($key in @(@($Result.PrefRows | ForEach-Object { "P:$_" }) + 'L:lock')) {
+                if ($script:ApplyBaselineBefore.ContainsKey($key)) { $script:Baseline[$key] = $script:ApplyBaselineBefore[$key] }
+            }
+        }
         Update-SelectionSummary
-        if (@($Result.FlagsSkipped).Count -gt 0) {
+        $skipped = @(@($Result.FlagsSkipped) + @($Result.PrefsSkipped) | Select-Object -Unique)
+        if ($skipped.Count -gt 0) {
             Show-BfoToast -Severity Warning -Title (T 'toast.applied' @($script:ApplyLabel)) `
-                -Message (T 'toast.appliedNoFlags' @($Result.Applied, $Result.Cleared, (@($Result.FlagsSkipped) -join ', ')))
+                -Message (T 'toast.appliedNoFlags' @($Result.Applied, $Result.Cleared, ($skipped -join ', ')))
         } else {
             Show-BfoToast -Severity Success -Title (T 'toast.applied' @($script:ApplyLabel)) `
                 -Message (T 'toast.appliedText' @($Result.Applied, $Result.Cleared))
@@ -265,7 +287,9 @@ function Invoke-BfoFullRestore {
             $script:Vm.NtpEnabled = $false
             $script:Vm.HomeEnabled = $false
             $script:Vm.StartupEnabled = $false
+            $script:Vm.LockSettings = $false
         } finally { Pop-SuppressSelectionEvents }
+        Update-RowLevels
         $script:ActiveProfile = 'Default'
         $script:BaseProfile = 'Default'
         Update-OverrideStates
@@ -592,9 +616,12 @@ function Import-BfoConfig {
             if ($modeId -and (Get-ChoiceIndex $vm.StartupModeItems $modeId) -ge 0) { $vm.StartupModeIndex = Get-ChoiceIndex $vm.StartupModeItems $modeId }
             if ($Config.startup.urls) { $vm.StartupUrls = [string]$Config.startup.urls }
         }
+        # Configs from before the lock switch leave it as it is.
+        if ($null -ne $Config.lock) { $vm.LockSettings = [bool]$Config.lock }
     } finally {
         Pop-SuppressSelectionEvents
     }
+    Update-RowLevels
     # A mode id names the selection outright; a Custom config carries the mode
     # it started from, so "Custom: Origin + 3 changes" survives a round trip.
     $mode = if ($Config.profile) { Resolve-PresetId "$($Config.profile)" } else { 'Custom' }
@@ -606,6 +633,11 @@ function Import-BfoConfig {
     Update-OverrideStates
     Update-SelectionSummary
 }
+
+# ---- Lock settings in Brave ------------------------------------------------------------------
+# Not a mode change: it decides how every ticked row is written, so it only
+# relabels the cards and counts as a pending change.
+$ui.ChkLock.Add_Click({ Update-RowLevels; Update-SelectionSummary })
 
 # ---- Search and startup overrides -----------------------------------------------------------
 foreach ($toggle in @($ui.ChkSearch, $ui.ChkNtp, $ui.ChkHome, $ui.ChkStartup)) {

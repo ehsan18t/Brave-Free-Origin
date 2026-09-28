@@ -89,6 +89,30 @@ function ConvertTo-SystemEntry {
     return @{ Name = $item.Name; Match = $match; Effect = $item.Effect; Impacts = @($item.Impacts | Where-Object { $_ }) }
 }
 
+# One entry of a policy's Prefs, checked and filled in (see tweaks\README.md):
+#   File       'Profile' (each profile's Preferences) or 'LocalState'
+#   Path       the pref's member names; a Rule adds the '*,*' pattern
+#   Map        'bool' (the default: 0 is false), 'same', or value -> pref value
+#   Rule       a Shields default, stored as a site rule for every site
+#   Item       for a LIST policy: the pref is true when the list holds Item
+#   Protected  Brave signs this pref, so it is never written, only read
+function ConvertTo-PolicyPref {
+    param([hashtable]$Pref, [hashtable]$Policy, [string]$RelativePath)
+    $what = "$($Policy.Name) Prefs"
+    Assert-TweakField -Condition ([bool]$Pref.Path) -RelativePath $RelativePath -Message "${what}: every entry needs a Path."
+    $file = if ($Pref.File) { $Pref.File } else { 'Profile' }
+    Assert-TweakField -Condition (@('Profile', 'LocalState') -contains $file) -RelativePath $RelativePath -Message "${what}: File must be 'Profile' or 'LocalState'."
+    $map = if ($Pref.ContainsKey('Map')) { $Pref.Map } else { 'bool' }
+    Assert-TweakField -Condition ($map -is [hashtable] -or @('bool', 'same') -contains $map) -RelativePath $RelativePath -Message "${what}: Map must be 'bool', 'same' or a table."
+    Assert-TweakField -Condition (($Policy.Type -eq 'LIST') -eq [bool]$Pref['Item']) -RelativePath $RelativePath -Message "${what}: Item is required for a LIST policy and only allowed there."
+    $path = [string[]]@($Pref.Path -split '\.')
+    if ($Pref.Rule) { $path = [string[]]@($path + '*,*') }
+    return @{
+        File = $file; Path = $path; Map = $map; Rule = [bool]$Pref.Rule; Item = $Pref['Item']; Protected = [bool]$Pref.Protected
+        Key = "$file|$($path -join '|')"
+    }
+}
+
 # Loads every tweak file into the script-scope tables. Wrapped in a function so
 # its temporaries stay local: this file is dot-sourced into the app's scope.
 function Import-Tweaks {
@@ -131,6 +155,13 @@ function Import-Tweaks {
                 $policy['Choices'] = $choices
             }
             $policy['Impacts'] = @($entry.Impacts | Where-Object { $_ })
+            $policy['Lock'] = [bool]$entry.Lock
+            $policy['PrefOnly'] = [bool]$entry.PrefOnly
+            $policy['Prefs'] = @(foreach ($pref in @($entry.Prefs | Where-Object { $_ })) { ConvertTo-PolicyPref -Pref $pref -Policy $entry -RelativePath $relative })
+            # Every row says how Brave may treat it: locked always, or which of
+            # Brave's own prefs the app writes so it stays changeable.
+            Assert-TweakField -Condition ($policy.Lock -xor ($policy.Prefs.Count -gt 0)) -RelativePath $relative -Message "$($entry.Name): give either Lock = `$true or Prefs, not both and not neither."
+            Assert-TweakField -Condition (-not $policy.PrefOnly -or @($policy.Prefs | Where-Object { $_.Protected }).Count -eq 0) -RelativePath $relative -Message "$($entry.Name): a PrefOnly row cannot use a Protected pref."
             foreach ($legacy in @($entry.LegacyNames | Where-Object { $_ })) { $script:LegacyPolicyNames[$legacy] = $entry.Name }
             $list += $policy
         }

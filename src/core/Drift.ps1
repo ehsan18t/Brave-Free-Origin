@@ -16,6 +16,11 @@
 # The record covers the whole machine, so it lives in ProgramData. Flags are
 # per user, and the record stores the Local State file they were written to.
 # Only what was enforced is recorded: a policy Apply removed is not watched.
+# Each policy and override records its level (see Get-PolicyLevel in
+# core\Registry.ps1), so the check reads the key it was written to. A row
+# written only as Brave's own pref is recorded but not watched: it is meant to
+# be changed in Brave. The prefs part lists every pref the app wrote, so
+# unticking a row or the full restore can undo exactly those.
 
 $script:AppliedRecordPath = Join-Path $env:ProgramData 'Brave-Free-Origin\applied.json'
 
@@ -50,31 +55,46 @@ function ConvertTo-RecordTable {
 }
 
 function New-RecordValue {
-    param([string]$Type, $Value)
-    if ($Type -eq 'LIST') { return [ordered]@{ type = 'LIST'; value = [string[]]@($Value) } }
-    return [ordered]@{ type = $Type; value = $Value }
+    param([string]$Type, $Value, [string]$Level = 'mandatory')
+    if ($Type -eq 'LIST') { return [ordered]@{ type = 'LIST'; value = [string[]]@($Value); level = $Level } }
+    return [ordered]@{ type = $Type; value = $Value; level = $Level }
+}
+
+# A record written before levels existed holds mandatory values only.
+function Get-RecordLevel {
+    param($Entry)
+    if ($Entry.level) { return [string]$Entry.level }
+    return 'mandatory'
 }
 
 # The record of a finished Apply. Hosts and repeat counts carry over from the
 # previous record: hosts have their own Apply, and a count only resets when
 # what it counts changes.
 function New-AppliedRecord {
-    param($Selection, $Previous, [object[]]$FlagResults, [string]$BraveVersion)
+    param($Selection, $Previous, [object[]]$FlagResults, [string]$BraveVersion, $Prefs, [bool]$PrefsWritable = $true)
     $version = ConvertTo-BraveVersionInfo $BraveVersion
+    $lock = [bool]$Selection.Lock
     $policies = [ordered]@{}
-    foreach ($p in $Selection.Policies) { if ($p.Checked) { $policies[$p.Name] = New-RecordValue -Type $p.Type -Value $p.Value } }
+    foreach ($p in $Selection.Policies) {
+        if (-not $p.Checked) { continue }
+        $level = Get-PolicyLevel -Policy $script:PolicyByName[$p.Name] -Lock $lock
+        # Kept locked this time because Brave's files could not be written.
+        if ($level -eq 'pref' -and -not $PrefsWritable) { $level = 'mandatory' }
+        $policies[$p.Name] = New-RecordValue -Type $p.Type -Value $p.Value -Level $level
+    }
 
     $overrides = [ordered]@{}
     $o = $Selection.Overrides
     foreach ($getter in @({ Get-DesiredSearchOverride -Overrides $o }, { Get-DesiredNtpOverride -Overrides $o }, { Get-DesiredHomeOverride -Overrides $o })) {
         try { $desired = & $getter } catch { continue }
-        foreach ($name in $desired.Keys) { $overrides[$name] = New-RecordValue -Type $desired[$name].Type -Value $desired[$name].Value }
+        foreach ($name in $desired.Keys) { $overrides[$name] = New-RecordValue -Type $desired[$name].Type -Value $desired[$name].Value -Level (Get-OverrideLevel -Name $name -Lock $lock) }
     }
     try {
         $startup = Get-DesiredStartupOverride -Overrides $o
         if ($startup.Enabled) {
-            $overrides['RestoreOnStartup'] = New-RecordValue -Type 'DWORD' -Value $startup.Code
-            if ($startup.Urls.Count -gt 0) { $overrides['RestoreOnStartupURLs'] = New-RecordValue -Type 'LIST' -Value $startup.Urls }
+            $startupLevel = Get-OverrideLevel -Name 'RestoreOnStartup' -Lock $lock
+            $overrides['RestoreOnStartup'] = New-RecordValue -Type 'DWORD' -Value $startup.Code -Level $startupLevel
+            if ($startup.Urls.Count -gt 0) { $overrides['RestoreOnStartupURLs'] = New-RecordValue -Type 'LIST' -Value $startup.Urls -Level $startupLevel }
         }
     } catch { Write-Verbose "Startup override not recorded: $_" }
 
@@ -100,8 +120,10 @@ function New-AppliedRecord {
         baseMode   = $Selection.BaseProfile
         chromium   = $version.Chromium
         braveMinor = $version.BraveMinor
+        lock       = $lock
         policies   = $policies
         overrides  = $overrides
+        prefs      = $(if ($null -ne $Prefs) { $Prefs } elseif ($Previous -and $Previous.prefs) { $Previous.prefs } else { [ordered]@{} })
         tasks      = [string[]]@($Selection.Tasks | Where-Object { $_.Checked } | ForEach-Object { $_.Name })
         services   = [string[]]@($Selection.Services | Where-Object { $_.Checked } | ForEach-Object { $_.Name })
         flags      = $flags
@@ -116,8 +138,8 @@ function New-AppliedRecord {
             $keep = $false
             $kind, $name = $p.Name -split ':', 2
             switch ($kind) {
-                'P' { $keep = $policies.Contains($name) -and $oldPolicies.Contains($name) -and (Test-PolicyValueEqual $oldPolicies[$name].value $policies[$name].value) }
-                'O' { $keep = $overrides.Contains($name) -and $oldOverrides.Contains($name) -and (Test-PolicyValueEqual $oldOverrides[$name].value $overrides[$name].value) }
+                'P' { $keep = $policies.Contains($name) -and $oldPolicies.Contains($name) -and (Test-PolicyValueEqual $oldPolicies[$name].value $policies[$name].value) -and (Get-RecordLevel $oldPolicies[$name]) -eq $policies[$name].level }
+                'O' { $keep = $overrides.Contains($name) -and $oldOverrides.Contains($name) -and (Test-PolicyValueEqual $oldOverrides[$name].value $overrides[$name].value) -and (Get-RecordLevel $oldOverrides[$name]) -eq $overrides[$name].level }
                 'T' { $keep = $record.tasks -contains $name }
                 'S' { $keep = $record.services -contains $name }
                 default { $keep = $true }
@@ -134,7 +156,7 @@ function Save-AppliedHosts {
     param([string[]]$Domains)
     $record = Read-AppliedRecord
     $table = if ($record) { ConvertTo-RecordTable $record } else {
-        [ordered]@{ version = 1; appVersion = $script:AppVersion; savedAt = (Get-Date -Format 's'); mode = 'Custom'; policies = @{}; overrides = @{}; tasks = @(); services = @(); flags = @{}; repeats = @{} }
+        [ordered]@{ version = 1; appVersion = $script:AppVersion; savedAt = (Get-Date -Format 's'); mode = 'Custom'; lock = $false; policies = @{}; overrides = @{}; tasks = @(); services = @(); flags = @{}; prefs = @{}; repeats = @{} }
     }
     $table['hosts'] = [string[]]@($Domains | Sort-Object -Unique)
     Save-AppliedRecord $table
@@ -150,9 +172,9 @@ function New-DriftItem {
 }
 
 function Get-RecordedValue {
-    param([hashtable]$Values, [string]$Name, [string]$Type)
+    param([hashtable]$Values, [string]$Name, [string]$Type, [string]$Path = $script:PolicyPath)
     if ($Type -eq 'LIST') {
-        $listPath = Join-Path $script:PolicyPath $Name
+        $listPath = Join-Path $Path $Name
         if (-not (Test-Path $listPath)) { return [pscustomobject]@{ Exists = $false; Value = $null } }
         return [pscustomobject]@{ Exists = $true; Value = [string[]]@(Get-RegistryNumberedValues -Path $listPath) }
     }
@@ -167,14 +189,16 @@ function Get-DriftReport {
     if (-not $record) { return [pscustomobject]@{ Mode = $null; Base = $null; SavedAt = $null; Items = @() } }
     $version = ConvertTo-BraveVersionInfo $BraveVersion
     $repeats = ConvertTo-RecordTable $record.repeats
-    $values = Get-RegistryValueTable -Path $script:PolicyPath
+    $tables = @{ mandatory = (Get-RegistryValueTable -Path $script:PolicyPath); recommended = (Get-RegistryValueTable -Path $script:RecommendedPath) }
     $items = @()
 
     $status = { param([string]$Key) if ($repeats.Contains($Key) -and [int]$repeats[$Key] -ge 1) { 'repeat' } else { 'reverted' } }
 
     foreach ($p in (ConvertTo-RecordTable $record.policies).GetEnumerator()) {
-        $name = $p.Key; $type = $p.Value.type; $expected = $p.Value.value
-        $state = Get-RecordedValue -Values $values -Name $name -Type $type
+        $name = $p.Key; $type = $p.Value.type; $expected = $p.Value.value; $level = Get-RecordLevel $p.Value
+        # Written only as Brave's own pref: the user may change it in Brave.
+        if ($level -eq 'pref') { continue }
+        $state = Get-RecordedValue -Values $tables[$level] -Name $name -Type $type -Path (Get-LevelPath $level)
         $policy = $script:PolicyByName[$name]
         $retiredEntry = $script:RetiredPolicies[$name]
         if ($retiredEntry -or -not $policy) {
@@ -194,8 +218,8 @@ function Get-DriftReport {
     }
 
     foreach ($o in (ConvertTo-RecordTable $record.overrides).GetEnumerator()) {
-        $name = $o.Key; $type = $o.Value.type; $expected = $o.Value.value
-        $state = Get-RecordedValue -Values $values -Name $name -Type $type
+        $name = $o.Key; $type = $o.Value.type; $expected = $o.Value.value; $level = Get-RecordLevel $o.Value
+        $state = Get-RecordedValue -Values $tables[$level] -Name $name -Type $type -Path (Get-LevelPath $level)
         if (-not $state.Exists -or -not (Test-PolicyValueEqual $state.Value $expected)) {
             $items += New-DriftItem -Key "O:$name" -Kind 'Override' -Name $name -Status (& $status "O:$name") -Expected $expected -Actual $(if ($state.Exists) { $state.Value } else { $null })
         }
@@ -262,10 +286,10 @@ function Invoke-DriftReapply {
             }
             if ($item.Kind -eq 'Policy') {
                 $v = $policies[$item.Name]
-                Set-Policy -Path $script:PolicyPath -Name $item.Name -Type $v.type -Value $v.value
+                Set-Policy -Path (Get-LevelPath (Get-RecordLevel $v)) -Name $item.Name -Type $v.type -Value $v.value
             } elseif ($item.Kind -eq 'Override') {
                 $v = $overrides[$item.Name]
-                Set-Policy -Path $script:PolicyPath -Name $item.Name -Type $v.type -Value $v.value
+                Set-Policy -Path (Get-LevelPath (Get-RecordLevel $v)) -Name $item.Name -Type $v.type -Value $v.value
             } elseif ($item.Kind -eq 'Task') {
                 Disable-BraveTask -Name $item.Name
             } elseif ($item.Kind -eq 'Service') {
@@ -301,7 +325,7 @@ function Invoke-DriftCleanup {
             }
             if ($item.Kind -eq 'Policy') {
                 $type = if ($script:PolicyByName[$item.Name]) { $script:PolicyByName[$item.Name].Type } else { 'DWORD' }
-                [void](Remove-Policy -Path $script:PolicyPath -Name $item.Name -Type $type)
+                [void](Remove-PolicyEverywhere -Name $item.Name -Type $type)
             } elseif ($item.Kind -eq 'Flag') {
                 [void](Write-LocalStateFlags -Channel $item.Channel -Managed ([string[]]@($item.Name)) -Wanted ([string[]]@()))
             }

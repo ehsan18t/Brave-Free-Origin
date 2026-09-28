@@ -351,6 +351,8 @@ Brave-Free-Origin/
 ├── locales/                  # UI translations, read as UTF-8 at runtime
 │   └── en-US.json            #   generated reference, never loaded
 ├── tools/                    # maintainer scripts, not shipped to users
+│   ├── Build-Bundle.ps1      #   builds dist/Brave-Free-Origin.cmd, the single-file edition
+│   ├── Bundle-Stub.ps1       #   the batch + PowerShell template it fills in
 │   ├── Export-EnglishLocale.ps1
 │   ├── Test-Locales.ps1
 │   ├── Test-Tweaks.ps1
@@ -402,9 +404,25 @@ Advanced scriptlet backups are stored beside the Brave component list they prote
 
 Disabled scriptlet preference exports are JSON files saved wherever you choose in the save dialog.
 
-`tools/` is maintainer tooling and is deliberately left out of the portable
-zip. The zip itself (`Brave-Free-Origin.zip`) is a build output produced by CI
-and attached to releases — it is not a tracked file in this repository.
+### Building
+
+The repository runs as it is: `Brave-Free-Origin.bat` starts the app straight from the source files, so there is nothing to compile. CI produces two downloads from it, and neither is a tracked file in this repository.
+
+**Portable zip.** `Brave-Free-Origin.zip` holds the launcher, the entry script, `src/`, `tweaks/`, `locales/`, the docs and `images/`. `tools/` is maintainer tooling and is deliberately left out. CI builds it on every push and attaches it to releases.
+
+**Single file.** `tools/Build-Bundle.ps1` combines the whole app into one file, `dist/Brave-Free-Origin.cmd`, that runs on a double-click. It works on Windows PowerShell 5.1 and PowerShell 7:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\Build-Bundle.ps1
+```
+
+The `.cmd` is a batch file and a PowerShell script in one. Its batch part hands the file to PowerShell, which asks for administrator rights, unpacks the app into a temporary folder only administrators can access, runs it from there and deletes the folder when the window closes. A folder left behind by a crash or a power cut is removed on the next run. Every file is embedded as plain text, so the bundle can be read before it is run. To unpack it without running anything:
+
+```powershell
+.\Brave-Free-Origin.cmd -BfoExtractTo C:\some\empty\folder
+```
+
+The build stops on a file it cannot embed exactly: a UTF-8 BOM, invalid UTF-8 or mixed line endings. `dist/` is ignored by Git. CI builds the bundle with Windows PowerShell 5.1, unpacks it through `cmd`, checks that every file comes back byte for byte, and uploads it as the `Brave-Free-Origin-single-file` artifact.
 
 ### Exported config format
 

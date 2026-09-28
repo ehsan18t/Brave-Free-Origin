@@ -270,3 +270,42 @@ jobs:
         with:
           name: Brave-Free-Origin
           path: Brave-Free-Origin.zip
+
+      # The single-file edition: the whole app in one .cmd that runs on a
+      # double-click (see tools\Build-Bundle.ps1). Built with the production
+      # runtime, then unpacked through cmd the way a double-click runs it, so
+      # the batch header, the PowerShell stub and every embedded file are
+      # checked together. Every file has to come back byte for byte.
+      - name: Build single-file bundle (Windows PowerShell 5.1)
+        shell: powershell
+        run: .\tools\Build-Bundle.ps1
+
+      - name: Verify single-file bundle
+        shell: powershell
+        run: |
+          $bundle = (Resolve-Path 'dist\Brave-Free-Origin.cmd').Path
+          $text = [System.IO.File]::ReadAllText($bundle)
+          if (-not $text.StartsWith("<# :`r`n")) { throw 'The bundle does not start with its batch header.' }
+          if ([regex]::IsMatch($text, "(?<!`r)`n")) { throw 'The bundle has LF-only lines; cmd needs CRLF.' }
+          $out = Join-Path $env:RUNNER_TEMP 'bundle-unpacked'
+          $null | cmd.exe /c "`"$bundle`" -BfoExtractTo '$out'"
+          if ($LASTEXITCODE -ne 0) { throw "Unpacking through cmd failed with exit code $LASTEXITCODE." }
+          $expected = @(Get-Item 'Brave-Free-Origin.ps1') + @(Get-ChildItem 'src' -Recurse -File) +
+            @(Get-ChildItem 'tweaks' -Recurse -File -Filter '*.psd1') + @(Get-ChildItem 'locales' -File -Filter '*.json')
+          foreach ($file in $expected) {
+            $relative = (Resolve-Path -Relative $file.FullName) -replace '^\.[\\/]', ''
+            $copy = Join-Path $out $relative
+            if (-not (Test-Path -LiteralPath $copy)) { throw "$relative is missing from the bundle." }
+            if ((Get-FileHash -LiteralPath $copy).Hash -ne (Get-FileHash -LiteralPath $file.FullName).Hash) {
+              throw "$relative does not unpack byte for byte."
+            }
+          }
+          $unpacked = @(Get-ChildItem $out -Recurse -File).Count
+          if ($unpacked -ne $expected.Count) { throw "The bundle unpacks $unpacked files, expected $($expected.Count)." }
+          "Single-file bundle OK ($unpacked files)"
+
+      - name: Upload single-file bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: Brave-Free-Origin-single-file
+          path: dist/Brave-Free-Origin.cmd
